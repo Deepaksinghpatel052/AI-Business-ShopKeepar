@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Virtual environment
+venv/
+.venv/
+
+# Environment variables
+.env
+
+# Database
+*.db
+*.sqlite3
+
+# Uploaded files
+media/
+
+# IDE
+.vscode/
+.idea/
+
+# Alembic
+alembic/versions/*.py
