@@ -2,6 +2,14 @@ from datetime import datetime, timezone
 from sqlalchemy import Integer, String, DateTime, ForeignKey, BigInteger
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from models.shop_owner import Base
+import enum
+from sqlalchemy import Enum
+
+class ProcessStatus(str, enum.Enum):
+    PENDING   = "Pending"
+    PROCESS   = "Process"
+    REJECTED  = "Rejected"
+    DONE      = "Done"
 
 class Document(Base):
     __tablename__ = "documents"
@@ -17,3 +25,4 @@ class Document(Base):
     file_size    : Mapped[int]      = mapped_column(BigInteger,  nullable=False)  # bytes me
     
     uploaded_at  : Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
+    process: Mapped[ProcessStatus] = mapped_column(Enum(ProcessStatus), default=ProcessStatus.PENDING, nullable=False)
