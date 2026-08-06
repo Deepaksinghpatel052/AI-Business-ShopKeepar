@@ -34,8 +34,8 @@ class RAGSearch:
         )
         print(f"[INFO] OpenAI LLM initialized: {llm_model}")
 
-    def search_and_summarize(self, query: str, top_k: int = 5) -> str:
-        results = self.vectorstore.query(query, top_k=top_k)
+    def search_and_summarize(self, query: str, top_k: int = 5, user_id: int = None) -> str:
+        results = self.vectorstore.query(query, top_k=top_k, user_id=user_id)
         texts = [r["metadata"].get("text", "") for r in results if r["metadata"]]
         context = "\n\n".join(texts)
 
@@ -43,15 +43,15 @@ class RAGSearch:
             return "No relevant documents found."
 
         prompt = f"""You are a helpful business assistant.
-Answer the following question based only on the provided context.
-If the answer is not in the context, say "I don't have enough information."
+            Answer the following question based only on the provided context.
+            If the answer is not in the context, say "I don't have enough information."
 
-Question: {query}
+            Question: {query}
 
-Context:
-{context}
+            Context:
+            {context}
 
-Answer:"""
+            Answer:"""
 
         response = self.llm.invoke([prompt])
         return response.content
