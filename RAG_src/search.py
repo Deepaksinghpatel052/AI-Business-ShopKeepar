@@ -5,6 +5,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from dotenv import load_dotenv
 from RAG_src.vectorstore import FaissVectorStore
 from langchain_openai import ChatOpenAI
+from utils.prompets import search_and_summarize_prompt
 
 load_dotenv()
 
@@ -42,16 +43,7 @@ class RAGSearch:
         if not context:
             return "No relevant documents found."
 
-        prompt = f"""You are a helpful business assistant.
-            Answer the following question based only on the provided context.
-            If the answer is not in the context, say "I don't have enough information."
-
-            Question: {query}
-
-            Context:
-            {context}
-
-            Answer:"""
+        prompt = search_and_summarize_prompt(query, context)
 
         response = self.llm.invoke([prompt])
         return response.content

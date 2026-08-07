@@ -1,3 +1,15 @@
+def search_and_summarize_prompt(query: str, context: str) -> str:
+    return f"""You are a helpful business assistant.
+            Answer the following question based only on the provided context.
+            If the answer is not in the context, say "I don't have enough information."
+
+            Question: {query}
+
+            Context:
+            {context}
+
+            Answer:"""
+
 def document_verification_prompt(text: str) -> str:
     return f"""You are a document classifier for a Business AI assistant.
 Check if the document is REAL business data — not fictional, academic, or creative content.
