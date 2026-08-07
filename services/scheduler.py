@@ -11,6 +11,7 @@ from RAG_src.data_loader import load_all_documents
 from RAG_src.vectorstore import FaissVectorStore
 from utils.database import SessionLocal
 from dotenv import load_dotenv
+from utils.helper import is_business_document
 
 load_dotenv()
 
@@ -22,7 +23,7 @@ def process_pending_documents():
     db = SessionLocal()
     try:
         pending_docs = db.query(Document).filter(
-            Document.process == ProcessStatus.PENDING
+            Document.process == ProcessStatus.PROCESS
         ).limit(2).all()
 
         if not pending_docs:
@@ -61,14 +62,59 @@ def process_pending_documents():
     finally:
         db.close()
 
+def verify_pending_documents():
+    """
+    Pending documents ko verify karo — business related hai ya nahi.
+    Valid   → status = PROCESS
+    Invalid → status = REJECTED
+    """
+    db = SessionLocal()
+    try:
+        pending_docs = db.query(Document).filter(
+            Document.process == ProcessStatus.PENDING
+        ).limit(2).all()
+
+        if not pending_docs:
+            print("[VERIFY] No pending documents found.")
+            return
+
+        print(f"[VERIFY] Found {len(pending_docs)} pending documents.")
+
+        for doc in pending_docs:
+            print(f"[VERIFY] Verifying: {doc.original_name}")
+
+            is_valid, reason = is_business_document(doc.file_path)
+
+            if is_valid:
+                doc.process = ProcessStatus.PROCESS
+                print(f"[VERIFY] Accepted: {doc.original_name} — {reason}")
+            else:
+                doc.process = ProcessStatus.REJECTED
+                print(f"[VERIFY] Rejected: {doc.original_name} — {reason}")
+
+        db.commit()
+        print("[VERIFY] Verification complete.")
+
+    except Exception as e:
+        print(f"[VERIFY] Error: {e}")
+        db.rollback()
+    finally:
+        db.close()
 
 def start_scheduler():
     scheduler.add_job(
+        verify_pending_documents,
+        trigger=IntervalTrigger(minutes=15),
+        id="verify_pending_documents",
+        replace_existing=True,
+    )
+    scheduler.add_job(
         process_pending_documents,
-        trigger=IntervalTrigger(minutes=5),
+        trigger=IntervalTrigger(minutes=30),
         id="process_pending_documents",
         replace_existing=True,
     )
+
     scheduler.start()
     print("[SCHEDULER] Background scheduler started — runs every 5 minutes.")
     return scheduler
