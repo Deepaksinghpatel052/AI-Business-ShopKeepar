@@ -30,7 +30,7 @@ class FaissVectorStore:
         if embedding_model == "openai":
             from langchain_openai import OpenAIEmbeddings
             self._embed_model = OpenAIEmbeddings(
-                model="text-embedding-3-small",
+                model=os.getenv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small"),
                 api_key=os.getenv("OPENAI_API_KEY")
             )
             self._use_openai = True

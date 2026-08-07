@@ -36,7 +36,7 @@ def is_business_document(file_path: str) -> tuple[bool, str]:
         prompt = document_verification_prompt(text)
  
         response = client.chat.completions.create(
-            model="gpt-4o-mini",
+            model=os.getenv("OPENAI_CHAT_MODEL", "gpt-4o-mini"),
             messages=[{"role": "user", "content": prompt}],
             max_tokens=100,
             temperature=0,          # ← consistent results ke liye

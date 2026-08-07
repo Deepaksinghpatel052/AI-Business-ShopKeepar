@@ -14,7 +14,7 @@ class RAGSearch:
         self,
         persist_dir: str = "faiss_store",
         embedding_model: str = "openai",
-        llm_model: str = "gpt-4o-mini"
+        llm_model: str = os.getenv("OPENAI_CHAT_MODEL", "gpt-4o-mini")
     ):
         self.vectorstore = FaissVectorStore(persist_dir, embedding_model)
 
