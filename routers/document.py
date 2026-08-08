@@ -115,8 +115,89 @@ async def get_my_files(
                 "file_type": doc.file_type,
                 "file_size_kb": round(doc.file_size / 1024, 2),
                 "uploaded_at": doc.uploaded_at,
+                "process_status": doc.process.value,
+                "faiss_ids": doc.faiss_ids
             }
             for doc in documents
         ]
     }
 
+
+@router.put("/edit/{document_id}", status_code=status.HTTP_200_OK)
+async def edit_document(
+    document_id: int,
+    db: db_dependency,
+    current_user: ShopOwner = Depends(get_current_user),
+    file: UploadFile = File(...),
+):
+    """
+    Document edit endpoint.
+    Naya file upload karo — purana vector DB se delete hoga, naya process hoga.
+    """
+    # Document dhundo
+    doc = db.query(Document).filter(
+        Document.id == document_id,
+        Document.user_id == current_user.id
+    ).first()
+
+    if not doc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Document not found"
+        )
+
+    # File type check
+    if file.content_type not in ALLOWED_MIME_TYPES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="File type not allowed"
+        )
+
+    file_bytes = await file.read()
+
+    # File size check
+    if len(file_bytes) > MAX_FILE_SIZE:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="File size exceeds 10 MB limit"
+        )
+
+    # Purani file delete karo disk se
+    if doc.stored_path and os.path.exists(doc.stored_path):
+        os.remove(doc.stored_path)
+
+    # Naya file save karo
+    file_ext = ALLOWED_MIME_TYPES[file.content_type]
+    stored_name = f"{uuid.uuid4().hex}.{file_ext}"
+    now = datetime.now(timezone.utc)
+    shop_name_clean = "".join(
+        c if c.isalnum() else "_"
+        for c in (current_user.shop_name or "default")
+    ).lower()
+
+    user_folder = f"{UPLOAD_DIR}/{current_user.id}/{shop_name_clean}/{now.year}/{str(now.month).zfill(2)}/{str(now.day).zfill(2)}"
+    os.makedirs(user_folder, exist_ok=True)
+
+    file_path = f"{user_folder}/{stored_name}"
+    with open(file_path, "wb") as f:
+        f.write(file_bytes)
+
+    # Document table update karo
+    doc.original_name  = file.filename
+    doc.stored_name    = stored_name
+    doc.file_path      = file_path
+    doc.file_type      = file_ext
+    doc.mime_type      = file.content_type
+    doc.file_size      = len(file_bytes)
+    doc.process        = ProcessStatus.UPDATE   # ← UPDATE status
+    doc.uploaded_at    = now
+
+    db.commit()
+    db.refresh(doc)
+
+    return {
+        "message": "Document updated successfully. Processing will start shortly.",
+        "document_id": doc.id,
+        "original_name": doc.original_name,
+        "process_status": doc.process,
+    }

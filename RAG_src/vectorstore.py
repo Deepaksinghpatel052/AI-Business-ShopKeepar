@@ -1,7 +1,7 @@
 import sys
 import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
+import uuid
 import faiss
 import numpy as np
 import pickle
@@ -65,7 +65,18 @@ class FaissVectorStore:
         )
         chunks = emb_pipe.chunk_documents(documents)
         embeddings = emb_pipe.embed_chunks(chunks)
-        metadatas = [{"text": chunk.page_content, "user_id": user_id} for chunk in chunks]
+
+        # Har chunk ka unique ID banao
+        chunk_ids = [str(uuid.uuid4()) for _ in chunks]
+
+        metadatas = [
+            {
+                "text": chunk.page_content,
+                "user_id": user_id,
+                "chunk_id": chunk_ids[i]   # ID metadata me bhi save karo
+            }
+            for i, chunk in enumerate(chunks)
+        ]
 
         embeddings_np = np.array(embeddings).astype("float32")
         dim = embeddings_np.shape[1]
@@ -90,7 +101,10 @@ class FaissVectorStore:
         with open(meta_path, "wb") as f:
             pickle.dump(existing_meta, f)
 
-        print(f"[INFO] Index saved for user {user_id} — total vectors: {index.ntotal}")
+        print(f"[INFO] Index saved for user {user_id} — chunks: {len(chunk_ids)}")
+
+        # Chunk IDs return karo — scheduler DB me save karega
+        return chunk_ids
 
     # ── Query — sirf us user ka index ────────────────────────────────────────
     def query(self, query_text: str, top_k: int = 5, user_id: int = None) -> List[dict]:
@@ -124,3 +138,54 @@ class FaissVectorStore:
 
         print(f"[INFO] Found {len(results)} results for user {user_id}")
         return results
+        
+    def delete_by_ids(self, chunk_ids: list, user_id: int) -> bool:
+        """
+        Specific chunk IDs ko vector DB se delete karo.
+        """
+        user_dir = self._get_user_dir(user_id)
+        faiss_path = os.path.join(user_dir, "faiss.index")
+        meta_path  = os.path.join(user_dir, "metadata.pkl")
+
+        if not os.path.exists(faiss_path):
+            print(f"[DELETE] No index found for user {user_id}")
+            return False
+
+        # Metadata load karo
+        with open(meta_path, "rb") as f:
+            metadata = pickle.load(f)
+
+        # chunk_ids jo delete karne hain
+        ids_to_delete = set(chunk_ids)
+
+        # Jo chunks delete nahi karne unko rakho
+        remaining_meta = [
+            m for m in metadata
+            if m.get("chunk_id") not in ids_to_delete
+        ]
+
+        deleted_count = len(metadata) - len(remaining_meta)
+        print(f"[DELETE] Removing {deleted_count} chunks for user {user_id}")
+
+        if not remaining_meta:
+            # Koi chunk nahi bacha — index aur metadata delete karo
+            os.remove(faiss_path)
+            os.remove(meta_path)
+            print(f"[DELETE] Index cleared for user {user_id}")
+            return True
+
+        # Remaining chunks se naya index banao
+        remaining_texts = [m["text"] for m in remaining_meta]
+        embeddings = self._embed_model.embed_documents(remaining_texts)
+        embeddings_np = np.array(embeddings).astype("float32")
+
+        dim = embeddings_np.shape[1]
+        new_index = faiss.IndexFlatL2(dim)
+        new_index.add(embeddings_np)
+
+        faiss.write_index(new_index, faiss_path)
+        with open(meta_path, "wb") as f:
+            pickle.dump(remaining_meta, f)
+
+        print(f"[DELETE] Done — {len(remaining_meta)} chunks remaining")
+        return True

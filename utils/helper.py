@@ -4,7 +4,7 @@ import json
 from openai import OpenAI
 from dotenv import load_dotenv
 from utils.prompets import document_verification_prompt
-
+from RAG_src.vectorstore import FaissVectorStore
 load_dotenv()
 
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
@@ -48,6 +48,19 @@ def is_business_document(file_path: str) -> tuple[bool, str]:
 
     except Exception as e:
         return False, f"Verification failed: {str(e)}"
+
+
+def delete_document_from_vector_db(doc, user_id: int) -> bool:
+    """
+    Document ke faiss_ids use karke vector DB se chunks delete karo.
+    """
+    if not doc.faiss_ids:
+        print(f"[DELETE] No faiss_ids found for document: {doc.original_name}")
+        return False
+
+    chunk_ids = json.loads(doc.faiss_ids)
+    store = FaissVectorStore("faiss_store", embedding_model="openai")
+    return store.delete_by_ids(chunk_ids, user_id=user_id)
 
 if __name__ == "__main__":
     file_paths = [

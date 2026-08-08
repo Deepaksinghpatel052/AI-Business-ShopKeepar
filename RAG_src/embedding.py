@@ -51,6 +51,7 @@ class EmbeddingPipeline:
         return embeddings
 
 
+
 # Example usage
 if __name__ == "__main__":
     from RAG_src.data_loader import load_all_documents
