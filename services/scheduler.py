@@ -156,6 +156,145 @@ def handle_update_documents():
         db.close()
 
 
+def generate_daily_pdf():
+    """
+    Din ke end me confirmed chat entries ki PDF banao.
+    PDF ko documents table me add karo status=PENDING.
+    Chat entries delete karo.
+    Roz raat 11 baje chalega.
+    """
+    from models.chat_entry import ChatEntry, ChatStatus
+    from models.document import Document, ProcessStatus
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.units import mm
+    from reportlab.lib.styles import ParagraphStyle
+    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+    from reportlab.lib import colors
+    from reportlab.lib.enums import TA_CENTER
+    from collections import defaultdict
+    from datetime import datetime, timezone
+    import json
+
+    db = SessionLocal()
+    try:
+        # Confirmed entries fetch karo
+        confirmed_entries = db.query(ChatEntry).filter(
+            ChatEntry.status == ChatStatus.CONFIRMED
+        ).all()
+
+        if not confirmed_entries:
+            print("[DAILY PDF] No confirmed entries found.")
+            return
+
+        print(f"[DAILY PDF] Found {len(confirmed_entries)} confirmed entries.")
+
+        # User ke hisaab se group karo
+        user_entries = defaultdict(list)
+        for entry in confirmed_entries:
+            user_entries[entry.user_id].append(entry)
+
+        for user_id, entries in user_entries.items():
+            today = datetime.now(timezone.utc)
+
+            # PDF path banao
+            user_dir = f"{os.getenv('UPLOAD_DIR', './uploaded_files')}/{user_id}/chat_data/{today.year}/{str(today.month).zfill(2)}/{str(today.day).zfill(2)}"
+            os.makedirs(user_dir, exist_ok=True)
+            pdf_filename = f"daily_chat_{today.strftime('%Y%m%d_%H%M%S')}.pdf"
+            pdf_path = f"{user_dir}/{pdf_filename}"
+
+            # PDF banao
+            story = []
+            def P(t, s): return Paragraph(str(t), s)
+            def sp(h=4): return Spacer(1, h*mm)
+
+            title_s = ParagraphStyle("t", fontSize=14, textColor=colors.white,
+                                     fontName="Helvetica-Bold", alignment=TA_CENTER)
+            body_s  = ParagraphStyle("b", fontSize=9, textColor=colors.HexColor("#202124"),
+                                     fontName="Helvetica", leading=14)
+
+            # Header
+            header = Table([[P(f"Daily Chat Data — {today.strftime('%d %B %Y')}", title_s)]],
+                          colWidths=[170*mm])
+            header.setStyle(TableStyle([
+                ("BACKGROUND", (0,0), (-1,-1), colors.HexColor("#1E3A5F")),
+                ("TOPPADDING", (0,0), (-1,-1), 12),
+                ("BOTTOMPADDING", (0,0), (-1,-1), 12),
+            ]))
+            story.append(header)
+            story.append(sp(6))
+
+            # Data rows
+            table_data = [[
+                Paragraph("Product", ParagraphStyle("h", fontSize=8, textColor=colors.white, fontName="Helvetica-Bold")),
+                Paragraph("Qty", ParagraphStyle("h", fontSize=8, textColor=colors.white, fontName="Helvetica-Bold")),
+                Paragraph("Price/Unit", ParagraphStyle("h", fontSize=8, textColor=colors.white, fontName="Helvetica-Bold")),
+                Paragraph("Total", ParagraphStyle("h", fontSize=8, textColor=colors.white, fontName="Helvetica-Bold")),
+                Paragraph("Type", ParagraphStyle("h", fontSize=8, textColor=colors.white, fontName="Helvetica-Bold")),
+                Paragraph("Notes", ParagraphStyle("h", fontSize=8, textColor=colors.white, fontName="Helvetica-Bold")),
+            ]]
+
+            for entry in entries:
+                try:
+                    data = json.loads(entry.extracted)
+                except:
+                    data = {}
+
+                table_data.append([
+                    Paragraph(str(data.get("product", "N/A")), body_s),
+                    Paragraph(str(data.get("quantity", "N/A")), body_s),
+                    Paragraph(f"Rs {data.get('price_per_unit', 'N/A')}", body_s),
+                    Paragraph(f"Rs {data.get('total', 'N/A')}", body_s),
+                    Paragraph(str(data.get("type", "N/A")), body_s),
+                    Paragraph(str(data.get("notes", "")), body_s),
+                ])
+
+            data_table = Table(table_data, colWidths=[35*mm, 15*mm, 25*mm, 25*mm, 25*mm, 45*mm])
+            data_table.setStyle(TableStyle([
+                ("BACKGROUND",    (0,0), (-1,0),  colors.HexColor("#1E3A5F")),
+                ("GRID",          (0,0), (-1,-1),  0.4, colors.HexColor("#DADCE0")),
+                ("TOPPADDING",    (0,0), (-1,-1),  4),
+                ("BOTTOMPADDING", (0,0), (-1,-1),  4),
+                ("LEFTPADDING",   (0,0), (-1,-1),  5),
+                ("ROWBACKGROUNDS",(0,1), (-1,-1),  [colors.white, colors.HexColor("#F4F6F8")]),
+            ]))
+            story.append(data_table)
+
+            # PDF save karo
+            doc = SimpleDocTemplate(pdf_path, pagesize=A4,
+                                   leftMargin=20*mm, rightMargin=20*mm,
+                                   topMargin=20*mm, bottomMargin=20*mm)
+            doc.build(story)
+            print(f"[DAILY PDF] PDF created: {pdf_path}")
+
+            # Documents table me add karo
+            new_doc = Document(
+                user_id=user_id,
+                original_name=pdf_filename,
+                stored_name=pdf_filename,
+                file_path=pdf_path,
+                file_type="pdf",
+                mime_type="application/pdf",
+                file_size=os.path.getsize(pdf_path),
+                process=ProcessStatus.PENDING,
+            )
+            db.add(new_doc)
+
+            # Chat entries delete karo
+            for entry in entries:
+                db.delete(entry)
+
+        db.commit()
+        print("[DAILY PDF] Done — PDF added to documents, chat entries cleared.")
+
+    except Exception as e:
+        print(f"[DAILY PDF] Error: {e}")
+        db.rollback()
+    finally:
+        db.close()
+
+
+
+
 def start_scheduler():
     scheduler.add_job(
         verify_pending_documents,

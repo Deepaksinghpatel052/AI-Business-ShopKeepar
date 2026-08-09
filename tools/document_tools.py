@@ -41,5 +41,5 @@ def delete_document(document_id: int) -> dict:
 
 # Test
 if __name__ == "__main__":
-    result = delete_document(document_id=5)
+    result = delete_document(document_id=9)
     print(result)
