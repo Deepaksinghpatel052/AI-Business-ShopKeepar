@@ -20,56 +20,10 @@ logger = logging.getLogger(__name__)
 scheduler = BackgroundScheduler()
 
 
-def def delete_by_ids(self, chunk_ids: list, user_id: int) -> bool:
+def process_pending_documents():
     """
-    Specific chunk IDs ko vector DB se delete karo.
+    Pending documents ko process karo.
     """
-    user_dir = self._get_user_dir(user_id)
-    faiss_path = os.path.join(user_dir, "faiss.index")
-    meta_path  = os.path.join(user_dir, "metadata.pkl")
-
-    if not os.path.exists(faiss_path):
-        print(f"[DELETE] No index found for user {user_id}")
-        return False
-
-    # Metadata load karo
-    with open(meta_path, "rb") as f:
-        metadata = pickle.load(f)
-
-    # chunk_ids jo delete karne hain
-    ids_to_delete = set(chunk_ids)
-
-    # Jo chunks delete nahi karne unko rakho
-    remaining_meta = [
-        m for m in metadata
-        if m.get("chunk_id") not in ids_to_delete
-    ]
-
-    deleted_count = len(metadata) - len(remaining_meta)
-    print(f"[DELETE] Removing {deleted_count} chunks for user {user_id}")
-
-    if not remaining_meta:
-        # Koi chunk nahi bacha — index aur metadata delete karo
-        os.remove(faiss_path)
-        os.remove(meta_path)
-        print(f"[DELETE] Index cleared for user {user_id}")
-        return True
-
-    # Remaining chunks se naya index banao
-    remaining_texts = [m["text"] for m in remaining_meta]
-    embeddings = self._embed_model.embed_documents(remaining_texts)
-    embeddings_np = np.array(embeddings).astype("float32")
-
-    dim = embeddings_np.shape[1]
-    new_index = faiss.IndexFlatL2(dim)
-    new_index.add(embeddings_np)
-
-    faiss.write_index(new_index, faiss_path)
-    with open(meta_path, "wb") as f:
-        pickle.dump(remaining_meta, f)
-
-    print(f"[DELETE] Done — {len(remaining_meta)} chunks remaining")
-    return True q():
     db = SessionLocal()
     try:
         pending_docs = db.query(Document).filter(
@@ -153,6 +107,55 @@ def verify_pending_documents():
     finally:
         db.close()
 
+
+
+def handle_update_documents():
+    """
+    UPDATE status wale documents ko handle karo.
+    1. Purane chunks vector DB se delete karo
+    2. faiss_ids = null karo
+    3. Status = PENDING karo
+    Baaki kaam existing scheduler karega (verify → process → embed)
+    """
+    db = SessionLocal()
+    try:
+        update_docs = db.query(Document).filter(
+            Document.process == ProcessStatus.UPDATE
+        ).limit(10).all()
+
+        if not update_docs:
+            print("[UPDATE] No documents with UPDATE status found.")
+            return
+
+        print(f"[UPDATE] Found {len(update_docs)} documents to update.")
+
+        for doc in update_docs:
+            print(f"[UPDATE] Processing: {doc.original_name}")
+
+            # Purane chunks vector DB se delete karo
+            if doc.faiss_ids:
+                from utils.helper import delete_document_from_vector_db
+                success = delete_document_from_vector_db(doc, user_id=doc.user_id)
+                if success:
+                    print(f"[UPDATE] Old chunks deleted for: {doc.original_name}")
+                else:
+                    print(f"[UPDATE] Could not delete chunks for: {doc.original_name}")
+
+            # faiss_ids null karo, status PENDING karo
+            doc.faiss_ids = None
+            doc.process   = ProcessStatus.PENDING
+            print(f"[UPDATE] Reset to PENDING: {doc.original_name}")
+
+        db.commit()
+        print("[UPDATE] All UPDATE documents reset to PENDING successfully.")
+
+    except Exception as e:
+        print(f"[UPDATE] Error: {e}")
+        db.rollback()
+    finally:
+        db.close()
+
+
 def start_scheduler():
     scheduler.add_job(
         verify_pending_documents,
@@ -164,6 +167,12 @@ def start_scheduler():
         process_pending_documents,
         trigger=IntervalTrigger(minutes=30),
         id="process_pending_documents",
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        handle_update_documents,
+        trigger=IntervalTrigger(minutes=10),
+        id="handle_update_documents",
         replace_existing=True,
     )
 

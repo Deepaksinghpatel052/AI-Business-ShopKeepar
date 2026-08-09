@@ -6,7 +6,7 @@ from typing import Annotated
 from sqlalchemy.orm import Session
 import os
 from dotenv import load_dotenv
-from models.document import Document
+from models.document import Document, ProcessStatus
 import uuid
 from datetime import datetime, timezone
 
@@ -163,8 +163,8 @@ async def edit_document(
         )
 
     # Purani file delete karo disk se
-    if doc.stored_path and os.path.exists(doc.stored_path):
-        os.remove(doc.stored_path)
+    if doc.file_path and os.path.exists(doc.file_path):
+        os.remove(doc.file_path)
 
     # Naya file save karo
     file_ext = ALLOWED_MIME_TYPES[file.content_type]
