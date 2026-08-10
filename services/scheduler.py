@@ -179,7 +179,7 @@ def generate_daily_pdf():
     try:
         confirmed_entries = db.query(ChatEntry).filter(
             ChatEntry.status == ChatStatus.CONFIRMED
-        ).all()
+        ).limit(50).all()
 
         if not confirmed_entries:
             print("[DAILY PDF] No confirmed entries found.")
@@ -312,6 +312,12 @@ def start_scheduler():
         handle_update_documents,
         trigger=IntervalTrigger(minutes=10),
         id="handle_update_documents",
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        generate_daily_pdf,
+        trigger=IntervalTrigger(hours=6),
+        id="generate_daily_pdf",
         replace_existing=True,
     )
 
