@@ -9,6 +9,7 @@ from utils.prompets import search_and_summarize_prompt
 import json
 from models.chat_entry import ChatEntry, ChatStatus
 from utils.database import SessionLocal
+from datetime import date
 
 load_dotenv()
 
@@ -128,65 +129,59 @@ class RAGSearch:
             db.close()
 
     def _extract_and_confirm(self, message: str, user_id: int) -> str:
-        """
-        User ke message se data extract karo aur confirmation maango.
-        """
-        import json
+
         extract_prompt = f"""Extract business data from this message.
 
-Message: "{message}"
+    Message: "{message}"
 
-Reply in JSON only:
-{{
-  "product": "product name",
-  "quantity": number,
-  "price_per_unit": number,
-  "total": number,
-  "type": "sale/purchase/expense/stock",
-  "notes": "any additional info"
-}}
+    Reply in JSON only, no extra text:
+    {{
+    "product": "product name",
+    "quantity": number,
+    "price_per_unit": number,
+    "total": number,
+    "type": "sale/purchase/expense/stock",
+    "notes": "any additional info"
+    }}
 
-If any field is not mentioned, set it to null."""
+    If any field is not mentioned, set it to null."""
+
         extract_response = self.llm.invoke([extract_prompt])
-
-        # Debug — dekho LLM kya return kar raha hai
         print(f"[DEBUG] LLM raw response: {extract_response.content}")
 
         try:
             raw = extract_response.content.strip()
             raw = raw.removeprefix("```json").removeprefix("```").removesuffix("```").strip()
             extracted = json.loads(raw)
-        except:
+        except Exception as e:
+            print(f"[DEBUG] JSON parse error: {e}")
             return "Could not understand the data. Please try again with more details."
-        
+
+        # Confirmation message banao
         confirmation = f"""I understood the following data:
 
-Product  : {extracted.get('product', 'N/A')}
-Quantity : {extracted.get('quantity', 'N/A')}
-Price    : Rs {extracted.get('price_per_unit', 'N/A')} per unit
-Total    : Rs {extracted.get('total', 'N/A')}
-Type     : {extracted.get('type', 'N/A')}
+    Product  : {extracted.get('product', 'N/A')}
+    Quantity : {extracted.get('quantity', 'N/A')}
+    Price    : Rs {extracted.get('price_per_unit', 'N/A')} per unit
+    Total    : Rs {extracted.get('total', 'N/A')}
+    Type     : {extracted.get('type', 'N/A')}
+    Notes    : {extracted.get('notes', 'N/A')}
+    Date     : {date.today()}
 
-Reply 'yes' to confirm and save, or correct the information."""
-        # chat_entries table me pending status me save karo
-        from models.chat_entry import ChatEntry, ChatStatus
-        from utils.database import SessionLocal
-        import json
+    Reply 'yes' to confirm and save, or 'no' to reject."""
 
         db = SessionLocal()
         try:
             entry = ChatEntry(
                 user_id=user_id,
                 raw_message=message,
-                extracted=json.dumps(extracted),
+                extracted=json.dumps({**extracted, "date": str(date.today())}),  # ← date add
                 status=ChatStatus.PENDING
             )
             db.add(entry)
             db.commit()
             db.refresh(entry)
-            
-            # Entry ID confirmation message me add karo
-            confirmation += f"\n\n[Entry ID: {entry.id}]"
+            print(f"[DEBUG] Entry saved with ID: {entry.id}")
         finally:
             db.close()
 
@@ -194,8 +189,11 @@ Reply 'yes' to confirm and save, or correct the information."""
 
 
     def search_and_summarize(self, query: str, top_k: int = 5, user_id: int = None) -> str:
+        # Query me aaj ki date add karo
+        enhanced_query = f"{query} (today's date is {date.today()})"
         
-        results = self.vectorstore.query(query, top_k=top_k, user_id=user_id)
+        results = self.vectorstore.query(enhanced_query, top_k=top_k, user_id=user_id)
+        
         texts = [r["metadata"].get("text", "") for r in results if r["metadata"]]
         
         # Source 2 — chat_entries table se confirmed entries lo

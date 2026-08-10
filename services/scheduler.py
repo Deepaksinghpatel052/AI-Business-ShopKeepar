@@ -177,7 +177,6 @@ def generate_daily_pdf():
 
     db = SessionLocal()
     try:
-        # Confirmed entries fetch karo
         confirmed_entries = db.query(ChatEntry).filter(
             ChatEntry.status == ChatStatus.CONFIRMED
         ).all()
@@ -188,7 +187,6 @@ def generate_daily_pdf():
 
         print(f"[DAILY PDF] Found {len(confirmed_entries)} confirmed entries.")
 
-        # User ke hisaab se group karo
         user_entries = defaultdict(list)
         for entry in confirmed_entries:
             user_entries[entry.user_id].append(entry)
@@ -196,41 +194,42 @@ def generate_daily_pdf():
         for user_id, entries in user_entries.items():
             today = datetime.now(timezone.utc)
 
-            # PDF path banao
-            user_dir = f"{os.getenv('UPLOAD_DIR', './uploaded_files')}/{user_id}/chat_data/{today.year}/{str(today.month).zfill(2)}/{str(today.day).zfill(2)}"
+            user_dir = f"media/uploads/{user_id}/chat_data/{today.year}/{str(today.month).zfill(2)}/{str(today.day).zfill(2)}"
             os.makedirs(user_dir, exist_ok=True)
             pdf_filename = f"daily_chat_{today.strftime('%Y%m%d_%H%M%S')}.pdf"
             pdf_path = f"{user_dir}/{pdf_filename}"
 
-            # PDF banao
             story = []
+
             def P(t, s): return Paragraph(str(t), s)
-            def sp(h=4): return Spacer(1, h*mm)
+            def sp(h=4): return Spacer(1, h * mm)
 
             title_s = ParagraphStyle("t", fontSize=14, textColor=colors.white,
                                      fontName="Helvetica-Bold", alignment=TA_CENTER)
             body_s  = ParagraphStyle("b", fontSize=9, textColor=colors.HexColor("#202124"),
                                      fontName="Helvetica", leading=14)
+            header_s = ParagraphStyle("h", fontSize=8, textColor=colors.white,
+                                      fontName="Helvetica-Bold", alignment=TA_CENTER)
 
-            # Header
             header = Table([[P(f"Daily Chat Data — {today.strftime('%d %B %Y')}", title_s)]],
-                          colWidths=[170*mm])
+                           colWidths=[170 * mm])
             header.setStyle(TableStyle([
-                ("BACKGROUND", (0,0), (-1,-1), colors.HexColor("#1E3A5F")),
-                ("TOPPADDING", (0,0), (-1,-1), 12),
-                ("BOTTOMPADDING", (0,0), (-1,-1), 12),
+                ("BACKGROUND",    (0, 0), (-1, -1), colors.HexColor("#1E3A5F")),
+                ("TOPPADDING",    (0, 0), (-1, -1), 12),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 12),
             ]))
             story.append(header)
             story.append(sp(6))
 
-            # Data rows
+            # Table headers — Date column add kiya
             table_data = [[
-                Paragraph("Product", ParagraphStyle("h", fontSize=8, textColor=colors.white, fontName="Helvetica-Bold")),
-                Paragraph("Qty", ParagraphStyle("h", fontSize=8, textColor=colors.white, fontName="Helvetica-Bold")),
-                Paragraph("Price/Unit", ParagraphStyle("h", fontSize=8, textColor=colors.white, fontName="Helvetica-Bold")),
-                Paragraph("Total", ParagraphStyle("h", fontSize=8, textColor=colors.white, fontName="Helvetica-Bold")),
-                Paragraph("Type", ParagraphStyle("h", fontSize=8, textColor=colors.white, fontName="Helvetica-Bold")),
-                Paragraph("Notes", ParagraphStyle("h", fontSize=8, textColor=colors.white, fontName="Helvetica-Bold")),
+                P("Product",    header_s),
+                P("Date",       header_s),
+                P("Qty",        header_s),
+                P("Price/Unit", header_s),
+                P("Total",      header_s),
+                P("Type",       header_s),
+                P("Notes",      header_s),
             ]]
 
             for entry in entries:
@@ -240,29 +239,30 @@ def generate_daily_pdf():
                     data = {}
 
                 table_data.append([
-                    Paragraph(str(data.get("product", "N/A")), body_s),
-                    Paragraph(str(data.get("quantity", "N/A")), body_s),
-                    Paragraph(f"Rs {data.get('price_per_unit', 'N/A')}", body_s),
-                    Paragraph(f"Rs {data.get('total', 'N/A')}", body_s),
-                    Paragraph(str(data.get("type", "N/A")), body_s),
-                    Paragraph(str(data.get("notes", "")), body_s),
+                    P(str(data.get("product", "N/A")), body_s),
+                    P(str(data.get("date", str(entry.created_at.date()))), body_s),  # ← date
+                    P(str(data.get("quantity", "N/A")), body_s),
+                    P(f"Rs {data.get('price_per_unit', 'N/A')}", body_s),
+                    P(f"Rs {data.get('total', 'N/A')}", body_s),
+                    P(str(data.get("type", "N/A")), body_s),
+                    P(str(data.get("notes", "")), body_s),
                 ])
 
-            data_table = Table(table_data, colWidths=[35*mm, 15*mm, 25*mm, 25*mm, 25*mm, 45*mm])
+            data_table = Table(table_data,
+                               colWidths=[32*mm, 22*mm, 12*mm, 22*mm, 22*mm, 22*mm, 38*mm])
             data_table.setStyle(TableStyle([
-                ("BACKGROUND",    (0,0), (-1,0),  colors.HexColor("#1E3A5F")),
-                ("GRID",          (0,0), (-1,-1),  0.4, colors.HexColor("#DADCE0")),
-                ("TOPPADDING",    (0,0), (-1,-1),  4),
-                ("BOTTOMPADDING", (0,0), (-1,-1),  4),
-                ("LEFTPADDING",   (0,0), (-1,-1),  5),
-                ("ROWBACKGROUNDS",(0,1), (-1,-1),  [colors.white, colors.HexColor("#F4F6F8")]),
+                ("BACKGROUND",    (0, 0), (-1, 0),  colors.HexColor("#1E3A5F")),
+                ("GRID",          (0, 0), (-1, -1),  0.4, colors.HexColor("#DADCE0")),
+                ("TOPPADDING",    (0, 0), (-1, -1),  4),
+                ("BOTTOMPADDING", (0, 0), (-1, -1),  4),
+                ("LEFTPADDING",   (0, 0), (-1, -1),  5),
+                ("ROWBACKGROUNDS",(0, 1), (-1, -1),  [colors.white, colors.HexColor("#F4F6F8")]),
             ]))
             story.append(data_table)
 
-            # PDF save karo
             doc = SimpleDocTemplate(pdf_path, pagesize=A4,
-                                   leftMargin=20*mm, rightMargin=20*mm,
-                                   topMargin=20*mm, bottomMargin=20*mm)
+                                    leftMargin=20*mm, rightMargin=20*mm,
+                                    topMargin=20*mm, bottomMargin=20*mm)
             doc.build(story)
             print(f"[DAILY PDF] PDF created: {pdf_path}")
 
