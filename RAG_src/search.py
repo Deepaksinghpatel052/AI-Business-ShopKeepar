@@ -5,7 +5,8 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from dotenv import load_dotenv
 from RAG_src.vectorstore import FaissVectorStore
 from langchain_openai import ChatOpenAI
-from utils.prompets import search_and_summarize_prompt
+from utils.prompets import search_and_summarize_prompt, handle_message_intent_prompt
+from utils.prompets import extract_and_confirm_confirmation_propmt, extract_and_confirm_extract_prompt
 import json
 from models.chat_entry import ChatEntry, ChatStatus
 from utils.database import SessionLocal
@@ -64,17 +65,7 @@ class RAGSearch:
                 return self._reject_entry(pending_entry.id)
 
         # Step 1 — Intent detect karo
-        intent_prompt = f"""You are an intent classifier for a Business AI assistant.
-
-    User message: "{message}"
-
-    Classify the intent as ONE of:
-    - "query" — user is asking a question about existing business data
-    - "add_data" — user wants to add/save new business data (sales, stock, purchases, expenses etc.)
-    - "unclear" — cannot determine intent
-
-    Reply in JSON only:
-    {{"intent": "query/add_data/unclear", "reason": "short reason"}}"""
+        intent_prompt = handle_message_intent_prompt(message)
 
         intent_response = self.llm.invoke([intent_prompt])
 
@@ -130,21 +121,7 @@ class RAGSearch:
 
     def _extract_and_confirm(self, message: str, user_id: int) -> str:
 
-        extract_prompt = f"""Extract business data from this message.
-
-    Message: "{message}"
-
-    Reply in JSON only, no extra text:
-    {{
-    "product": "product name",
-    "quantity": number,
-    "price_per_unit": number,
-    "total": number,
-    "type": "sale/purchase/expense/stock",
-    "notes": "any additional info"
-    }}
-
-    If any field is not mentioned, set it to null."""
+        extract_prompt = extract_and_confirm_extract_prompt(message)
 
         extract_response = self.llm.invoke([extract_prompt])
         print(f"[DEBUG] LLM raw response: {extract_response.content}")
@@ -158,17 +135,7 @@ class RAGSearch:
             return "Could not understand the data. Please try again with more details."
 
         # Confirmation message banao
-        confirmation = f"""I understood the following data:
-
-    Product  : {extracted.get('product', 'N/A')}
-    Quantity : {extracted.get('quantity', 'N/A')}
-    Price    : Rs {extracted.get('price_per_unit', 'N/A')} per unit
-    Total    : Rs {extracted.get('total', 'N/A')}
-    Type     : {extracted.get('type', 'N/A')}
-    Notes    : {extracted.get('notes', 'N/A')}
-    Date     : {date.today()}
-
-    Reply 'yes' to confirm and save, or 'no' to reject."""
+        confirmation = extract_and_confirm_confirmation_propmt(extracted)
 
         db = SessionLocal()
         try:
@@ -189,11 +156,13 @@ class RAGSearch:
 
 
     def search_and_summarize(self, query: str, top_k: int = 5, user_id: int = None) -> str:
-        # Query me aaj ki date add karo
-        enhanced_query = f"{query} (today's date is {date.today()})"
-        
+
+        # Bas aaj ki date inject karo — baki LLM decide kare
+        today = date.today()
+        enhanced_query = f"{query} (today's date is {today.strftime('%d %B %Y')})"
+
+        # Vector DB se search karo
         results = self.vectorstore.query(enhanced_query, top_k=top_k, user_id=user_id)
-        
         texts = [r["metadata"].get("text", "") for r in results if r["metadata"]]
         
         # Source 2 — chat_entries table se confirmed entries lo
@@ -201,26 +170,30 @@ class RAGSearch:
         try:
             confirmed_entries = db.query(ChatEntry).filter(
                 ChatEntry.user_id == user_id,
-                ChatEntry.status == ChatStatus.CONFIRMED
+                ChatEntry.status == ChatStatus.CONFIRMED,
             ).all()
-
             for entry in confirmed_entries:
                 try:
                     data = json.loads(entry.extracted)
-                    text = f"Chat entry: Product={data.get('product')}, Quantity={data.get('quantity')}, Price per unit=Rs {data.get('price_per_unit')}, Total=Rs {data.get('total')}, Type={data.get('type')}, Notes={data.get('notes')}"
+                    text = (
+                        f"Date={data.get('date', str(today))}, "
+                        f"Product={data.get('product')}, "
+                        f"Quantity={data.get('quantity')}, "
+                        f"Total=Rs {data.get('total')}, "
+                        f"Type={data.get('type')}"
+                    )
                     texts.append(text)
                 except:
                     pass
         finally:
             db.close()
-        
-        context = "\n\n".join(texts)
 
+        context = "\n\n".join(texts)
+        # print(f"[DEBUG] Context for summarization: {context[:500]}...")  # first 500 chars
         if not context:
-            return "No relevant documents found."
+            return "No relevant data found."
 
         prompt = search_and_summarize_prompt(query, context)
-
         response = self.llm.invoke([prompt])
         return response.content
 

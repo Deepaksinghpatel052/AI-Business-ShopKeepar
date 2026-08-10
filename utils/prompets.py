@@ -1,14 +1,71 @@
+from datetime import date
+
+
+
+def extract_and_confirm_confirmation_propmt(extracted: dict) -> str:
+    return f"""I understood the following data:
+
+        Product  : {extracted.get('product', 'N/A')}
+        Quantity : {extracted.get('quantity', 'N/A')}
+        Price    : Rs {extracted.get('price_per_unit', 'N/A')} per unit
+        Total    : Rs {extracted.get('total', 'N/A')}
+        Type     : {extracted.get('type', 'N/A')}
+        Notes    : {extracted.get('notes', 'N/A')}
+        Date     : {date.today()}
+
+        Reply 'yes' to confirm and save, or 'no' to reject."""
+
+
+def extract_and_confirm_extract_prompt(message: str) -> str:
+    return f"""Extract business data from this message.
+        Message: "{message}"
+
+        Reply in JSON only, no extra text:
+        {{
+        "product": "product name",
+        "quantity": number,
+        "price_per_unit": number,
+        "total": number,
+        "type": "sale/purchase/expense/stock",
+        "notes": "any additional info"
+        }}
+
+        If any field is not mentioned, set it to null."""
+
+def handle_message_intent_prompt(message: str) -> str:
+    return f"""You are an intent classifier for a Business AI assistant.
+            User message: "{message}"
+
+            Classify the intent as ONE of:
+            - "query" — user is asking a question about existing business data, purchases, sales, expenses, stock
+            - "add_data" — user wants to add/save NEW business data
+            - "unclear" — casual chat, greetings only
+
+            IMPORTANT: Any question about past purchases, sales, expenses, or stock is ALWAYS "query".
+            Examples of "query": 
+            - "How many X did I buy?"
+            - "What did I sell today?"
+            - "How much did I spend?"
+
+            Reply in JSON only:
+            {{"intent": "query/add_data/unclear", "reason": "short reason"}}"""
+
+
+
 def search_and_summarize_prompt(query: str, context: str) -> str:
+    today = date.today()
     return f"""You are a helpful business assistant.
-            Answer the following question based only on the provided context.
-            If the answer is not in the context, say "I don't have enough information."
+        Answer the  following question based ONLY on the provided context.
 
-            Question: {query}
+        Today's date is {today.strftime('%d %B %Y')}.
+        Use this to understand relative dates like "today", "yesterday", "last week" etc.
 
-            Context:
-            {context}
+        Question: {query}
 
-            Answer:"""
+        Context:
+        {context}
+
+        Answer:"""
 
 def document_verification_prompt(text: str) -> str:
     return f"""You are a document classifier for a Business AI assistant.
