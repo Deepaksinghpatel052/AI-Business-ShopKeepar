@@ -21,6 +21,7 @@ config.set_main_option("sqlalchemy.url", os.getenv("DATABASE_URL", "sqlite:///./
 # Model import karo
 from models.document import Document
 from models.shop_owner import Base
+from models.chat_entry import ChatEntry
 target_metadata = Base.metadata
 
 
