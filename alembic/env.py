@@ -1,7 +1,8 @@
 import os
 from logging.config import fileConfig
-
+from models.email_queue import EmailQueue
 from sqlalchemy import engine_from_config, pool
+from models.transaction import Transaction
 from alembic import context
 from dotenv import load_dotenv
 
