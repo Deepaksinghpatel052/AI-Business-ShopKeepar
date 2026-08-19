@@ -3,7 +3,8 @@ import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from typing import List, Any
-from langchain_text_splitters import RecursiveCharacterTextSplitter
+# from langchain_text_splitters import RecursiveCharacterTextSplitter
+from langchain_text_splitters import CharacterTextSplitter
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -11,7 +12,7 @@ load_dotenv()
 
 class EmbeddingPipeline:
 
-    def __init__(self, model_name: str = "openai", chunk_size: int = 1000, chunk_overlap: int = 200):
+    def __init__(self, model_name: str = "openai", chunk_size: int = 1000, chunk_overlap: int = 0):
         self.chunk_size = chunk_size
         self.chunk_overlap = chunk_overlap
         self.model_name = model_name
@@ -28,12 +29,13 @@ class EmbeddingPipeline:
             self.model = None
 
     def chunk_documents(self, documents: List[Any]) -> List[Any]:
-        splitter = RecursiveCharacterTextSplitter(
-            chunk_size=self.chunk_size,
-            chunk_overlap=self.chunk_overlap,
-            length_function=len,
-            separators=["\n\n", "\n", " ", ""]
-        )
+        splitter = CharacterTextSplitter(
+                separator="\n",
+                chunk_size=1000,
+                chunk_overlap=0
+            )
+        print(f" Chunks splitter SIZE: {splitter._chunk_size}")
+        print(f" Chunks splitter OVERLAP: {splitter._chunk_overlap}")
         chunks = splitter.split_documents(documents)
         print(f"[INFO] Split {len(documents)} documents into {len(chunks)} chunks.")
         return chunks

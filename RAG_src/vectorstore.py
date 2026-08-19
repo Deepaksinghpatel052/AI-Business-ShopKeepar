@@ -64,6 +64,7 @@ class FaissVectorStore:
             chunk_overlap=self.chunk_overlap
         )
         chunks = emb_pipe.chunk_documents(documents)
+        
         embeddings = emb_pipe.embed_chunks(chunks)
 
         # Har chunk ka unique ID banao

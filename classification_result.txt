@@ -1,0 +1,72 @@
+File: media/testing/devnix_store_narrative_jul_aug2026.pdf======== TRANSACTIONS =======
+{"date": "2026-07-01", "product": "Dettol soap", "type": "sale", "quantity": 12, "unit": "piece", "rate": null, "total": null}
+{"date": "2026-07-01", "product": "Paracetamol 500mg", "type": "sale", "quantity": 20, "unit": "strip", "rate": null, "total": null}
+{"date": "2026-07-01", "product": "Dettol", "type": "purchase", "quantity": 50, "unit": "piece", "rate": 22, "total": 1100}
+{"date": "2026-07-01", "product": "Shop Rent", "type": "expense", "quantity": null, "unit": null, "rate": null, "total": 8000}
+{"date": "2026-07-03", "product": "Electricity Bill", "type": "expense", "quantity": null, "unit": null, "rate": null, "total": 1200}
+{"date": "2026-07-06", "product": "various medicines", "type": "purchase", "quantity": null, "unit": null, "rate": null, "total": 5500}
+{"date": null, "product": "ORS sachets", "type": "sale", "quantity": 30, "unit": "sachet", "rate": null, "total": null}
+{"date": null, "product": "Paracetamol", "type": "sale", "quantity": 25, "unit": "strip", "rate": null, "total": null}
+{"date": "2026-07-10", "product": "general items", "type": "purchase", "quantity": null, "unit": null, "rate": null, "total": 3200}
+{"date": "2026-07-11", "product": "Strepsils", "type": "sale", "quantity": 8, "unit": "packs", "rate": null, "total": null}
+{"date": "2026-07-11", "product": "B-Complex vitamin tablets", "type": "sale", "quantity": 5, "unit": "bottles", "rate": 120, "total": 600}
+{"date": "2026-07-11", "product": "Burnol cream", "type": "sale", "quantity": 3, "unit": "pieces", "rate": null, "total": null}
+{"date": "2026-07-12", "product": "Internet Bill", "type": "expense", "quantity": null, "unit": null, "rate": null, "total": 699}
+{"date": "2026-07-13", "product": "medicines", "type": "purchase", "quantity": null, "unit": null, "rate": null, "total": 4800}
+{"date": "2026-07-14", "product": "Dettol Handwash", "type": "sale", "quantity": 6, "unit": "pieces", "rate": null, "total": null}
+{"date": "2026-07-14", "product": "Vicks Inhaler", "type": "sale", "quantity": 4, "unit": "pieces", "rate": null, "total": null}
+{"date": "2026-07-14", "product": "ORS", "type": "sale", "quantity": 40, "unit": "sachets", "rate": null, "total": null}
+{"date": "2026-07-17", "product": "medicines", "type": "purchase", "quantity": null, "unit": null, "rate": null, "total": 6200}
+{"date": "2026-07-18", "product": "Staff Salary", "type": "expense", "quantity": null, "unit": null, "rate": null, "total": 12000}
+{"date": "2026-07-19", "product": "B-Complex", "type": "sale", "quantity": 8, "unit": "bottle", "rate": null, "total": null}
+{"date": "2026-07-19", "product": "Hand Sanitizer 500ml", "type": "sale", "quantity": 6, "unit": "piece", "rate": 150, "total": null}
+{"date": "2026-07-19", "product": "ORS sachets", "type": "sale", "quantity": 35, "unit": "sachet", "rate": null, "total": null}
+{"date": "2026-07-15", "product": "Paracetamol 500mg", "type": "sale", "quantity": 30, "unit": "strip", "rate": null, "total": null}
+{"date": "2026-07-15", "product": "Crocin", "type": "sale", "quantity": null, "unit": null, "rate": null, "total": null}
+{"date": "2026-07-15", "product": "Betadine solution", "type": "sale", "quantity": null, "unit": null, "rate": null, "total": null}
+{"date": "2026-07-15", "product": "Amoxicillin 500mg", "type": "sale", "quantity": null, "unit": null, "rate": null, "total": null}
+{"date": "2026-07-22", "product": "Dettol soap", "type": "sale", "quantity": 20, "unit": "piece", "rate": 30, "total": 600}
+{"date": "2026-07-24", "product": "GST Payment", "type": "expense", "quantity": null, "unit": null, "rate": null, "total": 2800}
+{"date": "2026-07-23", "product": "ORS", "type": "purchase", "quantity": null, "unit": null, "rate": null, "total": 4500}
+{"date": "2026-07-28", "product": "various medicines", "type": "purchase", "quantity": null, "unit": null, "rate": null, "total": 3800}
+{"date": "2026-07-28", "product": "packaging material supplies", "type": "purchase", "quantity": null, "unit": null, "rate": null, "total": 450}
+{"date": "2026-08-01", "product": "opening stock", "type": "purchase", "quantity": null, "unit": null, "rate": null, "total": 5500}
+{"date": "2026-08-01", "product": "Shop Rent", "type": "expense", "quantity": null, "unit": null, "rate": null, "total": 8000}
+{"date": "2026-08-04", "product": "Electricity Bill", "type": "expense", "quantity": null, "unit": null, "rate": null, "total": 1350}
+{"date": null, "product": "Amoxicillin", "type": "sale", "quantity": 12, "unit": "piece", "rate": null, "total": null}
+{"date": null, "product": "B-Complex tablets", "type": "sale", "quantity": 10, "unit": "bottle", "rate": null, "total": null}
+{"date": "2026-08-06", "product": "Vicks VapoRub", "type": "sale", "quantity": 10, "unit": "piece", "rate": null, "total": 3200}
+{"date": "2026-08-08", "product": "Paracetamol", "type": "sale", "quantity": 35, "unit": "strip", "rate": null, "total": null}
+{"date": "2026-08-08", "product": "ORS", "type": "sale", "quantity": 50, "unit": "sachet", "rate": null, "total": null}
+{"date": "2026-08-10", "product": "Staff Salary", "type": "expense", "quantity": null, "unit": null, "rate": null, "total": 12000}
+{"date": "2026-08-10", "product": "Internet Bill", "type": "expense", "quantity": null, "unit": null, "rate": null, "total": 699}
+{"date": "2026-08-11", "product": "B-Complex", "type": "sale", "quantity": 12, "unit": "bottle", "rate": null, "total": null}
+{"date": "2026-08-11", "product": "Strepsils", "type": "sale", "quantity": 10, "unit": "piece", "rate": null, "total": null}
+{"date": "2026-08-11", "product": "Vicks", "type": "sale", "quantity": 6, "unit": "piece", "rate": null, "total": null}
+{"date": "2026-08-12", "product": "Dettol Handwash", "type": "sale", "quantity": 10, "unit": "piece", "rate": null, "total": null}
+{"date": "2026-08-15", "product": "selected items", "type": "sale", "quantity": null, "unit": null, "rate": null, "total": 2500}
+{"date": "2026-08-14", "product": "various medicines", "type": "purchase", "quantity": null, "unit": null, "rate": null, "total": 3500}
+{"date": "2026-08-14", "product": "ORS sachets", "type": "sale", "quantity": 40, "unit": "sachet", "rate": null, "total": null}
+{"date": "2026-08-14", "product": "Paracetamol 500mg", "type": "sale", "quantity": 20, "unit": "strip", "rate": null, "total": null}
+
+======== NARRATIVES =======
+
+[1] These are my personal business notes for the period July to mid-August 2026. I keep track of what sold well, what I bought, what expenses I had, and any observations from customers or day-to-day operations. Not everything is exact but I try to write down important things every day or two. Good start to July. July is starting well. These two days were average. Sold some Disprin strips and Hand Sanitizer. The sanitizer demand has.
+
+[2] Sales of Crocin 650mg are doing well as the fever season is starting early this year. The small Dettol handwash bottle is finishing too quickly according to a customer complaint, suggesting a need to stock the 500ml version more. The first week of July saw a decent overall performance with total sales around Rs 3,000. School reopening on July 5th led to a jump in Paracetamol sales, with parents buying for kids. ORS sachets are also moving fast due to the ongoing summer heat.
+
+[3] Throat infection cases increasing. Also noticed more people buying B-Complex vitamin tablets, seems like there is some awareness drive happening in the area, maybe from the local doctor. Typical rainy season beginning to show. ORS demand hit a peak this week — the heat combined with early monsoon humidity is causing lots of dehydration cases. Week 2 total sales around Rs 3,700 which is better than last week.
+
+[4] Monsoon arrived properly this week and immediately the fever medicine sales went up dramatically. Did a major restock on July 17th — biggest single purchase this month because I could see demand was going to be high. July 18th was salary day — this is my biggest fixed expense every month after rent. Doctor prescriptions increasing for infections.
+
+[5] The week ended well, total around Rs 5,800 in sales. Note to self: need to urgently reorder ORS and Paracetamol — stock getting critically low. Vicks VapoRub picked up — 8 pieces. Amoxicillin demand continuing strong. Last week of July was solid. Hand sanitizer, Strepsils, Disprin all selling well. Crocin had its best week — 25 strips sold in one week. Dettol Handwash also good — 8 pieces. July overall was a very good month.
+
+[6] Monsoon season really helped medicine sales. Total July sales estimated around Rs 18,350. Main concerns: high purchase costs eating into margins, staff salary and rent are fixed big expenses. Customer feedback this month: 2 customers asked if we stock homeopathy medicines — something to think about for future. One regular customer complimented the shop cleanliness. Paracetamol and Crocin still selling strong from monsoon demand. Amoxicillin demand increasing — infection season seems to be at peak. Good start to August.
+
+[7] good product, good margin. Strepsils and B-Complex both selling well. Did another smaller restock
+
+[8] This week has been the best week ever for Vicks VapoRub. Week 1 of August is looking better than July week 1. August 8–10, 2026, were peak sales days. August 8th was exceptional due to a viral fever outbreak in the nearby colony. Sales remained strong from August 11–13, 2026, with a spike in demand for hygiene products as parents stock up for the school season. One customer who has been buying regularly recommended our shop to her entire apartment society, indicating good word of mouth.
+
+[9] Kids going to school. Crocin and Betadine both selling well. Getting a lot of prescription customers for Amoxicillin — building good relationship with local doctors who trust us to always have stock. August is looking like it will beat July total sales. Mid-month August sales already at Rs 9,840 for week 2 alone. Overall business sentiment positive. Need to think about expanding the vitamin and supplement section — B-Complex success shows there is demand. Also getting requests for protein supplements from gym-goers in the area.
+
+[10] Looking back at the last 6-7 weeks, a few clear patterns have emerged. Monsoon season was the biggest driver of sales — fever medicines, ORS, and antiseptics all saw significant volume increases. The decision to do a large restock in mid-July paid off well as demand peaked exactly when stock was ready. B-Complex tablets are a new rising star — doctor recommendations are driving consistent sales. Bulk/corporate orders are worth pursuing more aggressively — the office order in July was easy money with no effort. Main cost concern remains the fixed expenses — Rs 20,000 per month in rent and salaries means I need to maintain at least Rs 30,000 in monthly sales just to break even. The expired ORS complaint from two customers in July is something I must take seriously — need a better system to check expiry dates regularly. Overall I am cautiously optimistic about August ending strong.

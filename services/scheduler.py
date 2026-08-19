@@ -48,6 +48,7 @@ def process_pending_documents():
             for d in user_pending_docs:
                 print(f"[SCHEDULER] Processing: {d.original_name}")
 
+
                 user_documents = load_all_documents([d.file_path])
                 if not user_documents:
                     print(f"[SCHEDULER] No content loaded from: {d.original_name}")
