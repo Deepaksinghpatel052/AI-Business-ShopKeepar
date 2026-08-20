@@ -2,7 +2,7 @@ from fastapi import FastAPI, HTTPException, status, Depends, Header, APIRouter
 from sqlalchemy import create_engine, or_
 from sqlalchemy.orm import sessionmaker, Session
 from typing import Annotated
-from pydantic import BaseModel, EmailStr, field_validator
+from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
 from passlib.context import CryptContext
 from models.shop_owner import ShopOwner
 import re, os
@@ -11,8 +11,10 @@ from fastapi.security import OAuth2PasswordBearer
 from jose import jwt, JWTError
 from datetime import datetime, timedelta, timezone
 from dotenv import load_dotenv
-from utils.auth import verify_token
+from utils.auth import verify_token, validate_password_strength, get_current_user
 from utils.database import get_db
+from utils.otp import generate_otp, hash_otp, verify_otp
+from utils.email_service import send_verification_code_email
 
 
 load_dotenv()
@@ -52,13 +54,7 @@ class SignupRequest(BaseModel):
 
     @field_validator("password")
     def password_valid(cls, v):
-        if len(v) < 8:
-            raise ValueError("Password must be at least 8 characters")
-        if not re.search(r"[A-Z]", v):
-            raise ValueError("Password must contain at least one uppercase letter")
-        if not re.search(r"[0-9]", v):
-            raise ValueError("Password must contain at least one number")
-        return v
+        return validate_password_strength(v)
 
     @field_validator("username")
     def username_valid(cls, v):
@@ -69,6 +65,39 @@ class SignupRequest(BaseModel):
         if not re.match(r"^[a-zA-Z0-9_]+$", v):
             raise ValueError("Username can only contain letters, numbers, and underscores")
         return v.lower()
+
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+
+class ResetPasswordRequest(BaseModel):
+    email: EmailStr
+    verification_code: str = Field(min_length=6, max_length=6)
+    new_password: str
+    confirm_password: str
+
+    @field_validator("verification_code")
+    def code_valid(cls, v):
+        if not v.isdigit():
+            raise ValueError("Verification code must be a 6-digit number")
+        return v
+
+    @field_validator("new_password")
+    def new_password_valid(cls, v):
+        return validate_password_strength(v)
+
+    @model_validator(mode="after")
+    def passwords_match(self):
+        if self.new_password != self.confirm_password:
+            raise ValueError("Passwords do not match")
+        return self
+
+class ChangePasswordRequest(BaseModel):
+    old_password: str
+    new_password: str
+
+    @field_validator("new_password")
+    def new_password_valid(cls, v):
+        return validate_password_strength(v)
 
 # ── Response schema ───────────────────────────────────────────────────────────
 class SigninResponse(BaseModel):
@@ -199,3 +228,120 @@ async def token_for_swagger(
 
     token = create_access_token(user.id, user.email)
     return {"access_token": token, "token_type": "bearer"}
+
+
+# ── Forgot password ────────────────────────────────────────────────────────────
+PASSWORD_RESET_CODE_EXPIRE_MINUTES = int(os.getenv("PASSWORD_RESET_CODE_EXPIRE_MINUTES", 10))
+PASSWORD_RESET_RESEND_COOLDOWN_SECONDS = 60
+PASSWORD_RESET_MAX_ATTEMPTS = 5
+
+
+def _utcnow() -> datetime:
+    # SQLite drops tzinfo on round-trip, so reset-code timestamps are stored/compared naive.
+    return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
+@router.post("/forgot-password/send-code", status_code=status.HTTP_200_OK)
+async def send_password_reset_code(payload: ForgotPasswordRequest, db: db_dependency):
+    """
+    Email pe 6-digit verification code bhejo.
+    User exist na kare tab bhi same generic response — email enumeration se bachne ke liye.
+    """
+    generic_response = {"message": "If an account with this email exists, a verification code has been sent."}
+
+    user = db.query(ShopOwner).filter(ShopOwner.email == payload.email).first()
+    if not user:
+        return generic_response
+
+    now = _utcnow()
+    if user.reset_code_last_sent_at and (now - user.reset_code_last_sent_at).total_seconds() < PASSWORD_RESET_RESEND_COOLDOWN_SECONDS:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Please wait a minute before requesting another code"
+        )
+
+    code = generate_otp()
+
+    try:
+        send_verification_code_email(user.email, user.name, code, PASSWORD_RESET_CODE_EXPIRE_MINUTES)
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Could not send verification email: {str(e)}"
+        )
+
+    # Email bhejne ke baad hi DB update karo — send fail ho to code invalid hi rahe
+    user.reset_code_hash = hash_otp(code)
+    user.reset_code_expires_at = now + timedelta(minutes=PASSWORD_RESET_CODE_EXPIRE_MINUTES)
+    user.reset_code_attempts = 0
+    user.reset_code_last_sent_at = now
+    db.commit()
+
+    return generic_response
+
+
+@router.post("/forgot-password/reset", status_code=status.HTTP_200_OK)
+async def reset_password(payload: ResetPasswordRequest, db: db_dependency):
+    """
+    Verification code check karke password reset karo.
+    """
+    invalid_code_error = HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        detail="Invalid or expired verification code"
+    )
+
+    user = db.query(ShopOwner).filter(ShopOwner.email == payload.email).first()
+    if not user or not user.reset_code_hash or not user.reset_code_expires_at:
+        raise invalid_code_error
+
+    if user.reset_code_attempts >= PASSWORD_RESET_MAX_ATTEMPTS:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many failed attempts. Please request a new code."
+        )
+
+    if _utcnow() > user.reset_code_expires_at:
+        raise invalid_code_error
+
+    if not verify_otp(payload.verification_code, user.reset_code_hash):
+        user.reset_code_attempts += 1
+        db.commit()
+        raise invalid_code_error
+
+    # Code sahi hai — password update karo, code single-use hai to clear karo
+    user.password_hash = pwd_context.hash(payload.new_password)
+    user.reset_code_hash = None
+    user.reset_code_expires_at = None
+    user.reset_code_attempts = 0
+    user.reset_code_last_sent_at = None
+    db.commit()
+
+    return {"message": "Password reset successfully. Please sign in with your new password."}
+
+
+# ── Change password (signed-in users) ────────────────────────────────────────
+@router.post("/change-password", status_code=status.HTTP_200_OK)
+async def change_password(
+    payload: ChangePasswordRequest,
+    db: db_dependency,
+    current_user: ShopOwner = Depends(get_current_user),
+):
+    """
+    Logged-in user apna password change kar sakta hai — old password verify karke.
+    """
+    if not pwd_context.verify(payload.old_password, current_user.password_hash):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Old password is incorrect"
+        )
+
+    if payload.old_password == payload.new_password:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="New password must be different from the old password"
+        )
+
+    current_user.password_hash = pwd_context.hash(payload.new_password)
+    db.commit()
+
+    return {"message": "Password changed successfully"}

@@ -1,7 +1,7 @@
 from fastapi import HTTPException, status, Depends
 from jose import jwt, JWTError
 from models.shop_owner import ShopOwner
-import os
+import os, re
 from typing import Annotated
 from fastapi.security import OAuth2PasswordBearer
 from dotenv import load_dotenv
@@ -9,6 +9,17 @@ from utils.database import get_db
 from sqlalchemy.orm import Session
 
 load_dotenv()
+
+
+def validate_password_strength(v: str) -> str:
+    """Shared password rule — signup aur forgot-password reset dono me use hota hai."""
+    if len(v) < 8:
+        raise ValueError("Password must be at least 8 characters")
+    if not re.search(r"[A-Z]", v):
+        raise ValueError("Password must contain at least one uppercase letter")
+    if not re.search(r"[0-9]", v):
+        raise ValueError("Password must contain at least one number")
+    return v
 
 SECRET_KEY = os.getenv("SECRET_KEY", "change-this-secret")
 ALGORITHM  = os.getenv("ALGORITHM", "HS256")

@@ -25,3 +25,9 @@ class ShopOwner(Base):
     auth_provider_id : Mapped[str | None]  = mapped_column(String(255), nullable=True)
     created_at       : Mapped[datetime]    = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
     last_login_at    : Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    # ── Forgot password ──────────────────────────────────────────────────────
+    reset_code_hash        : Mapped[str | None]      = mapped_column(String(255), nullable=True)
+    reset_code_expires_at  : Mapped[datetime | None]  = mapped_column(DateTime, nullable=True)
+    reset_code_attempts    : Mapped[int]              = mapped_column(Integer, default=0, nullable=False)
+    reset_code_last_sent_at: Mapped[datetime | None]  = mapped_column(DateTime, nullable=True)
