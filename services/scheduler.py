@@ -68,6 +68,73 @@ def process_pending_documents():
     finally:
         db.close()
 
+
+def process_demo_documents():
+    """
+    media/demo/<folder_name>/*.pdf ko folder-wise process karke
+    faiss_store/demo/<folder_name>/ me vector store banao.
+
+    Har subfolder ek "demo shop" hai (e.g. kirana_store, medical_store).
+    Already-indexed folders (jinka faiss.index already ban chuka hai) skip ho jaate hain,
+    to bar-bar chalne pe duplicate chunks nahi bante.
+    """
+    demo_dir = os.path.join("media", "demo")
+    demo_persist_dir = os.path.join("faiss_store", "demo")
+
+    if not os.path.isdir(demo_dir):
+        print(f"[DEMO] No demo directory found at {demo_dir}")
+        return
+
+    # faiss_store/demo folder create karo agar exist nahi karta
+    os.makedirs(demo_persist_dir, exist_ok=True)
+
+    folder_names = sorted(
+        f for f in os.listdir(demo_dir)
+        if os.path.isdir(os.path.join(demo_dir, f))
+    )
+
+    if not folder_names:
+        print(f"[DEMO] No folders found in {demo_dir}")
+        return
+
+
+    print(f"[DEMO] Found {len(folder_names)} demo folders.")
+
+    store = FaissVectorStore(demo_persist_dir, embedding_model="openai")
+
+    for folder_name in folder_names:
+        folder_path = os.path.join(demo_dir, folder_name)
+        index_path = os.path.join(demo_persist_dir, folder_name, "faiss.index")
+
+        if os.path.exists(index_path):
+            print(f"[DEMO] Already indexed, skipping: {folder_name}")
+            continue
+
+        pdf_paths = [
+            os.path.join(folder_path, f)
+            for f in sorted(os.listdir(folder_path))
+            if f.lower().endswith(".pdf")
+        ]
+
+        if not pdf_paths:
+            print(f"[DEMO] No PDF files found in: {folder_name}")
+            continue
+
+        print(f"[DEMO] Processing folder: {folder_name} — {len(pdf_paths)} PDF(s)")
+
+        documents = load_all_documents(pdf_paths)
+        if not documents:
+            print(f"[DEMO] No content loaded from folder: {folder_name}")
+            continue
+
+        # folder_name hi "user_id" ki jagah use hota hai —
+        # isliye vector store faiss_store/demo/<folder_name>/ me banta hai
+        chunk_ids = store.build_from_documents(documents, user_id=folder_name)
+        print(f"[DEMO] Done: {folder_name} — {len(chunk_ids)} chunks")
+
+    print("[DEMO] All demo folders processed.")
+
+
 def verify_pending_documents():
     """
     Pending documents ko verify karo — business related hai ya nahi.
@@ -318,6 +385,12 @@ def start_scheduler():
         generate_daily_pdf,
         trigger=IntervalTrigger(hours=6),
         id="generate_daily_pdf",
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        process_demo_documents,
+        trigger=IntervalTrigger(minutes=30),
+        id="process_demo_documents",
         replace_existing=True,
     )
 
