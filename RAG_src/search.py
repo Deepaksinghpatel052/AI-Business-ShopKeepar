@@ -9,8 +9,11 @@ from utils.prompets import search_and_summarize_prompt, handle_message_intent_pr
 from utils.prompets import extract_and_confirm_confirmation_propmt, extract_and_confirm_extract_prompt
 import json
 from models.chat_entry import ChatEntry, ChatStatus
+from models.shop_owner import ShopOwner
 from utils.database import SessionLocal
 from datetime import date
+
+DEMO_PERSIST_DIR = os.path.join("faiss_store", "demo")
 
 load_dotenv()
 
@@ -161,13 +164,20 @@ class RAGSearch:
         today = date.today()
         enhanced_query = f"{query} (today's date is {today.strftime('%d %B %Y')})"
 
-        # Vector DB se search karo
-        results = self.vectorstore.query(enhanced_query, top_k=top_k, user_id=user_id)
-        texts = [r["metadata"].get("text", "") for r in results if r["metadata"]]
-        
-        # Source 2 — chat_entries table se confirmed entries lo
+        # Vector DB se search karo — demo mode enabled hai to demo dataset se, warna user ke apne store se
         db = SessionLocal()
         try:
+            user = db.query(ShopOwner).filter(ShopOwner.id == user_id).first()
+
+            if user and user.demo_mode_enabled and user.demo_dataset:
+                demo_store = FaissVectorStore(DEMO_PERSIST_DIR, embedding_model=self.vectorstore.embedding_model)
+                results = demo_store.query(enhanced_query, top_k=top_k, user_id=user.demo_dataset)
+            else:
+                results = self.vectorstore.query(enhanced_query, top_k=top_k, user_id=user_id)
+
+            texts = [r["metadata"].get("text", "") for r in results if r["metadata"]]
+
+            # Source 2 — chat_entries table se confirmed entries lo
             confirmed_entries = db.query(ChatEntry).filter(
                 ChatEntry.user_id == user_id,
                 ChatEntry.status == ChatStatus.CONFIRMED,

@@ -31,3 +31,7 @@ class ShopOwner(Base):
     reset_code_expires_at  : Mapped[datetime | None]  = mapped_column(DateTime, nullable=True)
     reset_code_attempts    : Mapped[int]              = mapped_column(Integer, default=0, nullable=False)
     reset_code_last_sent_at: Mapped[datetime | None]  = mapped_column(DateTime, nullable=True)
+
+    # ── Demo / dummy data mode ────────────────────────────────────────────────
+    demo_mode_enabled: Mapped[bool]        = mapped_column(Boolean, default=False, nullable=False)
+    demo_dataset     : Mapped[str | None]  = mapped_column(String(100), nullable=True)
