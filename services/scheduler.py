@@ -31,10 +31,10 @@ def process_pending_documents():
         ).limit(10).all()
 
         if not pending_docs:
-            print("[SCHEDULER] No pending documents found.")
+            logger.info("[SCHEDULER] No pending documents found.")
             return
 
-        print(f"[SCHEDULER] Found {len(pending_docs)} pending documents.")
+        logger.info(f"[SCHEDULER] Found {len(pending_docs)} pending documents.")
 
         from collections import defaultdict
         user_docs_map = defaultdict(list)
@@ -46,24 +46,24 @@ def process_pending_documents():
 
             # Har document alag alag process karo
             for d in user_pending_docs:
-                print(f"[SCHEDULER] Processing: {d.original_name}")
+                logger.info(f"[SCHEDULER] Processing: {d.original_name} (document_id={d.id} user_id={user_id})")
 
                 user_documents = load_all_documents([d.file_path])
                 if not user_documents:
-                    print(f"[SCHEDULER] No content loaded from: {d.original_name}")
+                    logger.warning(f"[SCHEDULER] No content loaded from: {d.original_name} (document_id={d.id})")
                     continue
 
                 chunk_ids = store.build_from_documents(user_documents, user_id=user_id)
 
                 d.process = ProcessStatus.DONE
                 d.faiss_ids = json.dumps(chunk_ids)
-                print(f"[SCHEDULER] Done: {d.original_name} — {len(chunk_ids)} chunks")
+                logger.info(f"[SCHEDULER] Done: {d.original_name} — {len(chunk_ids)} chunks (document_id={d.id})")
 
         db.commit()
-        print("[SCHEDULER] All pending documents processed successfully.")
+        logger.info("[SCHEDULER] All pending documents processed successfully.")
 
-    except Exception as e:
-        print(f"[SCHEDULER] Error: {e}")
+    except Exception:
+        logger.exception("[SCHEDULER] Error processing pending documents")
         db.rollback()
     finally:
         db.close()
@@ -82,7 +82,7 @@ def process_demo_documents():
     demo_persist_dir = os.path.join("faiss_store", "demo")
 
     if not os.path.isdir(demo_dir):
-        print(f"[DEMO] No demo directory found at {demo_dir}")
+        logger.info(f"[DEMO] No demo directory found at {demo_dir}")
         return
 
     # faiss_store/demo folder create karo agar exist nahi karta
@@ -94,11 +94,10 @@ def process_demo_documents():
     )
 
     if not folder_names:
-        print(f"[DEMO] No folders found in {demo_dir}")
+        logger.info(f"[DEMO] No folders found in {demo_dir}")
         return
 
-
-    print(f"[DEMO] Found {len(folder_names)} demo folders.")
+    logger.info(f"[DEMO] Found {len(folder_names)} demo folders.")
 
     store = FaissVectorStore(demo_persist_dir, embedding_model="openai")
 
@@ -107,7 +106,7 @@ def process_demo_documents():
         index_path = os.path.join(demo_persist_dir, folder_name, "faiss.index")
 
         if os.path.exists(index_path):
-            print(f"[DEMO] Already indexed, skipping: {folder_name}")
+            logger.info(f"[DEMO] Already indexed, skipping: {folder_name}")
             continue
 
         pdf_paths = [
@@ -117,22 +116,22 @@ def process_demo_documents():
         ]
 
         if not pdf_paths:
-            print(f"[DEMO] No PDF files found in: {folder_name}")
+            logger.warning(f"[DEMO] No PDF files found in: {folder_name}")
             continue
 
-        print(f"[DEMO] Processing folder: {folder_name} — {len(pdf_paths)} PDF(s)")
+        logger.info(f"[DEMO] Processing folder: {folder_name} — {len(pdf_paths)} PDF(s)")
 
         documents = load_all_documents(pdf_paths)
         if not documents:
-            print(f"[DEMO] No content loaded from folder: {folder_name}")
+            logger.warning(f"[DEMO] No content loaded from folder: {folder_name}")
             continue
 
         # folder_name hi "user_id" ki jagah use hota hai —
         # isliye vector store faiss_store/demo/<folder_name>/ me banta hai
         chunk_ids = store.build_from_documents(documents, user_id=folder_name)
-        print(f"[DEMO] Done: {folder_name} — {len(chunk_ids)} chunks")
+        logger.info(f"[DEMO] Done: {folder_name} — {len(chunk_ids)} chunks")
 
-    print("[DEMO] All demo folders processed.")
+    logger.info("[DEMO] All demo folders processed.")
 
 
 def verify_pending_documents():
@@ -148,28 +147,28 @@ def verify_pending_documents():
         ).limit(10).all()
 
         if not pending_docs:
-            print("[VERIFY] No pending documents found.")
+            logger.info("[VERIFY] No pending documents found.")
             return
 
-        print(f"[VERIFY] Found {len(pending_docs)} pending documents.")
+        logger.info(f"[VERIFY] Found {len(pending_docs)} pending documents.")
 
         for doc in pending_docs:
-            print(f"[VERIFY] Verifying: {doc.original_name}")
+            logger.info(f"[VERIFY] Verifying: {doc.original_name} (document_id={doc.id})")
 
             is_valid, reason = is_business_document(doc.file_path)
 
             if is_valid:
                 doc.process = ProcessStatus.PROCESS
-                print(f"[VERIFY] Accepted: {doc.original_name} — {reason}")
+                logger.info(f"[VERIFY] Accepted: {doc.original_name} — {reason} (document_id={doc.id})")
             else:
                 doc.process = ProcessStatus.REJECTED
-                print(f"[VERIFY] Rejected: {doc.original_name} — {reason}")
+                logger.info(f"[VERIFY] Rejected: {doc.original_name} — {reason} (document_id={doc.id})")
 
         db.commit()
-        print("[VERIFY] Verification complete.")
+        logger.info("[VERIFY] Verification complete.")
 
-    except Exception as e:
-        print(f"[VERIFY] Error: {e}")
+    except Exception:
+        logger.exception("[VERIFY] Error verifying pending documents")
         db.rollback()
     finally:
         db.close()
@@ -191,33 +190,33 @@ def handle_update_documents():
         ).limit(10).all()
 
         if not update_docs:
-            print("[UPDATE] No documents with UPDATE status found.")
+            logger.info("[UPDATE] No documents with UPDATE status found.")
             return
 
-        print(f"[UPDATE] Found {len(update_docs)} documents to update.")
+        logger.info(f"[UPDATE] Found {len(update_docs)} documents to update.")
 
         for doc in update_docs:
-            print(f"[UPDATE] Processing: {doc.original_name}")
+            logger.info(f"[UPDATE] Processing: {doc.original_name} (document_id={doc.id})")
 
             # Purane chunks vector DB se delete karo
             if doc.faiss_ids:
                 from utils.helper import delete_document_from_vector_db
                 success = delete_document_from_vector_db(doc, user_id=doc.user_id)
                 if success:
-                    print(f"[UPDATE] Old chunks deleted for: {doc.original_name}")
+                    logger.info(f"[UPDATE] Old chunks deleted for: {doc.original_name} (document_id={doc.id})")
                 else:
-                    print(f"[UPDATE] Could not delete chunks for: {doc.original_name}")
+                    logger.warning(f"[UPDATE] Could not delete chunks for: {doc.original_name} (document_id={doc.id})")
 
             # faiss_ids null karo, status PENDING karo
             doc.faiss_ids = None
             doc.process   = ProcessStatus.PENDING
-            print(f"[UPDATE] Reset to PENDING: {doc.original_name}")
+            logger.info(f"[UPDATE] Reset to PENDING: {doc.original_name} (document_id={doc.id})")
 
         db.commit()
-        print("[UPDATE] All UPDATE documents reset to PENDING successfully.")
+        logger.info("[UPDATE] All UPDATE documents reset to PENDING successfully.")
 
-    except Exception as e:
-        print(f"[UPDATE] Error: {e}")
+    except Exception:
+        logger.exception("[UPDATE] Error handling UPDATE documents")
         db.rollback()
     finally:
         db.close()
@@ -249,10 +248,10 @@ def generate_daily_pdf():
         ).limit(50).all()
 
         if not confirmed_entries:
-            print("[DAILY PDF] No confirmed entries found.")
+            logger.info("[DAILY PDF] No confirmed entries found.")
             return
 
-        print(f"[DAILY PDF] Found {len(confirmed_entries)} confirmed entries.")
+        logger.info(f"[DAILY PDF] Found {len(confirmed_entries)} confirmed entries.")
 
         user_entries = defaultdict(list)
         for entry in confirmed_entries:
@@ -331,7 +330,7 @@ def generate_daily_pdf():
                                     leftMargin=20*mm, rightMargin=20*mm,
                                     topMargin=20*mm, bottomMargin=20*mm)
             doc.build(story)
-            print(f"[DAILY PDF] PDF created: {pdf_path}")
+            logger.info(f"[DAILY PDF] PDF created: {pdf_path} (user_id={user_id})")
 
             # Documents table me add karo
             new_doc = Document(
@@ -351,10 +350,10 @@ def generate_daily_pdf():
                 db.delete(entry)
 
         db.commit()
-        print("[DAILY PDF] Done — PDF added to documents, chat entries cleared.")
+        logger.info("[DAILY PDF] Done — PDF added to documents, chat entries cleared.")
 
-    except Exception as e:
-        print(f"[DAILY PDF] Error: {e}")
+    except Exception:
+        logger.exception("[DAILY PDF] Error generating daily PDF")
         db.rollback()
     finally:
         db.close()
@@ -395,11 +394,11 @@ def start_scheduler():
     )
 
     scheduler.start()
-    print("[SCHEDULER] Background scheduler started — runs every 5 minutes.")
+    logger.info("[SCHEDULER] Background scheduler started — runs every 5 minutes.")
     return scheduler
 
 
 def stop_scheduler():
     if scheduler.running:
         scheduler.shutdown()
-        print("[SCHEDULER] Scheduler stopped.")
+        logger.info("[SCHEDULER] Scheduler stopped.")

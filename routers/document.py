@@ -4,11 +4,13 @@ from utils.auth import get_current_user
 from models.shop_owner import ShopOwner
 from typing import Annotated
 from sqlalchemy.orm import Session
-import os
+import os, logging
 from dotenv import load_dotenv
 from models.document import Document, ProcessStatus
 import uuid
 from datetime import datetime, timezone
+
+logger = logging.getLogger(__name__)
 
 load_dotenv()
 
@@ -37,6 +39,7 @@ async def file_upload(
 
     # File type check
     if file.content_type not in ALLOWED_MIME_TYPES:
+        logger.warning(f"Upload rejected — disallowed content type '{file.content_type}': user_id={current_user.id}")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="File type not allowed. Allowed: pdf, doc, docx, csv, xls, xlsx, png, jpeg"
@@ -47,6 +50,7 @@ async def file_upload(
 
     # File size check
     if len(file_bytes) > MAX_FILE_SIZE:
+        logger.warning(f"Upload rejected — file too large ({len(file_bytes)} bytes): user_id={current_user.id}")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="File size exceeds 10 MB limit"
@@ -82,6 +86,11 @@ async def file_upload(
     db.add(document)
     db.commit()
     db.refresh(document)
+
+    logger.info(
+        f"Document uploaded — document_id={document.id} user_id={current_user.id} "
+        f"name={document.original_name} size={document.file_size}"
+    )
 
     return {
         "id": document.id,
@@ -141,6 +150,7 @@ async def edit_document(
     ).first()
 
     if not doc:
+        logger.warning(f"Edit rejected — document not found or not owned: document_id={document_id} user_id={current_user.id}")
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Document not found"
@@ -148,6 +158,7 @@ async def edit_document(
 
     # File type check
     if file.content_type not in ALLOWED_MIME_TYPES:
+        logger.warning(f"Edit rejected — disallowed content type '{file.content_type}': document_id={document_id}")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="File type not allowed"
@@ -157,6 +168,7 @@ async def edit_document(
 
     # File size check
     if len(file_bytes) > MAX_FILE_SIZE:
+        logger.warning(f"Edit rejected — file too large ({len(file_bytes)} bytes): document_id={document_id}")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="File size exceeds 10 MB limit"
@@ -194,6 +206,8 @@ async def edit_document(
 
     db.commit()
     db.refresh(doc)
+
+    logger.info(f"Document edited — document_id={doc.id} user_id={current_user.id} name={doc.original_name}")
 
     return {
         "message": "Document updated successfully. Processing will start shortly.",

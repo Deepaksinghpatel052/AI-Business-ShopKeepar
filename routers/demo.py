@@ -1,4 +1,4 @@
-import os
+import os, logging
 from fastapi import APIRouter, HTTPException, status, Depends
 from pydantic import BaseModel
 from typing import Annotated
@@ -6,6 +6,8 @@ from sqlalchemy.orm import Session
 from models.shop_owner import ShopOwner
 from utils.auth import get_current_user
 from utils.database import get_db
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/demo", tags=["Demo Data"])
 db_dependency = Annotated[Session, Depends(get_db)]
@@ -58,6 +60,7 @@ async def enable_demo_mode(
     """
     available = _get_available_datasets()
     if payload.dataset not in available:
+        logger.warning(f"Demo enable rejected — invalid dataset '{payload.dataset}': user_id={current_user.id}")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Invalid dataset. Available datasets: {available}"
@@ -66,6 +69,8 @@ async def enable_demo_mode(
     current_user.demo_mode_enabled = True
     current_user.demo_dataset = payload.dataset
     db.commit()
+
+    logger.info(f"Demo mode enabled — user_id={current_user.id} dataset={payload.dataset}")
 
     return {
         "message": "Demo mode enabled",
@@ -85,6 +90,8 @@ async def disable_demo_mode(
     current_user.demo_mode_enabled = False
     current_user.demo_dataset = None
     db.commit()
+
+    logger.info(f"Demo mode disabled — user_id={current_user.id}")
 
     return {
         "message": "Demo mode disabled",

@@ -2,11 +2,14 @@ import sys
 import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+import logging
 from typing import List, Any
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from dotenv import load_dotenv
 
 load_dotenv()
+
+logger = logging.getLogger(__name__)
 
 
 class EmbeddingPipeline:
@@ -35,19 +38,19 @@ class EmbeddingPipeline:
             separators=["\n\n", "\n", " ", ""]
         )
         chunks = splitter.split_documents(documents)
-        print(f"[INFO] Split {len(documents)} documents into {len(chunks)} chunks.")
+        logger.info(f"Split {len(documents)} documents into {len(chunks)} chunks.")
         return chunks
 
     def embed_chunks(self, chunks: List[Any]) -> List[List[float]]:
         texts = [chunk.page_content for chunk in chunks]
-        print(f"[INFO] Generating embeddings for {len(texts)} chunks...")
+        logger.info(f"Generating embeddings for {len(texts)} chunks...")
 
         if self.model_name == "openai":
             embeddings = self.model.embed_documents(texts)
         else:
             embeddings = self._local_model.encode(texts, show_progress_bar=True).tolist()
 
-        print(f"[INFO] Total embeddings: {len(embeddings)}")
+        logger.info(f"Total embeddings generated: {len(embeddings)}")
         return embeddings
 
 

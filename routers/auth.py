@@ -5,7 +5,7 @@ from typing import Annotated
 from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
 from passlib.context import CryptContext
 from models.shop_owner import ShopOwner
-import re, os
+import re, os, logging
 from fastapi.security import OAuth2PasswordRequestForm
 from fastapi.security import OAuth2PasswordBearer
 from jose import jwt, JWTError
@@ -16,6 +16,7 @@ from utils.database import get_db
 from utils.otp import generate_otp, hash_otp, verify_otp
 from utils.email_service import send_verification_code_email
 
+logger = logging.getLogger(__name__)
 
 load_dotenv()
 
@@ -124,6 +125,7 @@ class SignupResponse(BaseModel):
 async def signup(payload: SignupRequest, db: db_dependency):
     # Email duplicate check
     if db.query(ShopOwner).filter(ShopOwner.email == payload.email).first():
+        logger.warning(f"Signup rejected — email already exists: {payload.email}")
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="An account with this email already exists"
@@ -132,6 +134,7 @@ async def signup(payload: SignupRequest, db: db_dependency):
     # Username duplicate check
     if payload.username:
         if db.query(ShopOwner).filter(ShopOwner.username == payload.username).first():
+            logger.warning(f"Signup rejected — username already taken: {payload.username} ({payload.email})")
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="This username is already taken"
@@ -151,6 +154,8 @@ async def signup(payload: SignupRequest, db: db_dependency):
     db.add(new_owner)
     db.commit()
     db.refresh(new_owner)
+
+    logger.info(f"Signup successful — user_id={new_owner.id} email={new_owner.email}")
 
     return SignupResponse(
         id=new_owner.id,
@@ -179,6 +184,7 @@ async def signin(payload: SigninRequest, db: db_dependency):
 
     # Email nahi mila ya password galat
     if not user or not pwd_context.verify(payload.password, user.password_hash):
+        logger.warning(f"Signin failed — incorrect email or password: {payload.email}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect email or password"
@@ -186,6 +192,7 @@ async def signin(payload: SigninRequest, db: db_dependency):
 
     # Account inactive hai
     if not user.is_active:
+        logger.warning(f"Signin blocked — account deactivated: user_id={user.id} email={user.email}")
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Your account has been deactivated"
@@ -197,6 +204,8 @@ async def signin(payload: SigninRequest, db: db_dependency):
     # Last login update karo
     user.last_login_at = datetime.now(timezone.utc)
     db.commit()
+
+    logger.info(f"Signin successful — user_id={user.id} email={user.email}")
 
     return SigninResponse(
         access_token=token,
@@ -221,12 +230,14 @@ async def token_for_swagger(
     ).first()
 
     if not user or not pwd_context.verify(form_data.password, user.password_hash):
+        logger.warning(f"Token signin failed — incorrect email or password: {form_data.username}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect email or password"
         )
 
     token = create_access_token(user.id, user.email)
+    logger.info(f"Token signin successful — user_id={user.id} email={user.email}")
     return {"access_token": token, "token_type": "bearer"}
 
 
@@ -251,20 +262,23 @@ async def send_password_reset_code(payload: ForgotPasswordRequest, db: db_depend
 
     user = db.query(ShopOwner).filter(ShopOwner.email == payload.email).first()
     if not user:
+        logger.info(f"Password reset code requested for unknown email: {payload.email}")
         return generic_response
 
     now = _utcnow()
     if user.reset_code_last_sent_at and (now - user.reset_code_last_sent_at).total_seconds() < PASSWORD_RESET_RESEND_COOLDOWN_SECONDS:
+        logger.warning(f"Password reset code resend blocked by cooldown — user_id={user.id}")
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail="Please wait a minute before requesting another code"
         )
 
-    code = generate_otp()
+    code = generate_otp()  # never logged — it's a secret
 
     try:
         send_verification_code_email(user.email, user.name, code, PASSWORD_RESET_CODE_EXPIRE_MINUTES)
     except Exception as e:
+        logger.exception(f"Failed to send password reset email — user_id={user.id}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Could not send verification email: {str(e)}"
@@ -276,6 +290,8 @@ async def send_password_reset_code(payload: ForgotPasswordRequest, db: db_depend
     user.reset_code_attempts = 0
     user.reset_code_last_sent_at = now
     db.commit()
+
+    logger.info(f"Password reset code sent — user_id={user.id} email={user.email}")
 
     return generic_response
 
@@ -292,20 +308,24 @@ async def reset_password(payload: ResetPasswordRequest, db: db_dependency):
 
     user = db.query(ShopOwner).filter(ShopOwner.email == payload.email).first()
     if not user or not user.reset_code_hash or not user.reset_code_expires_at:
+        logger.warning(f"Password reset attempted with no pending code: {payload.email}")
         raise invalid_code_error
 
     if user.reset_code_attempts >= PASSWORD_RESET_MAX_ATTEMPTS:
+        logger.warning(f"Password reset locked out — too many attempts: user_id={user.id}")
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail="Too many failed attempts. Please request a new code."
         )
 
     if _utcnow() > user.reset_code_expires_at:
+        logger.warning(f"Password reset attempted with expired code: user_id={user.id}")
         raise invalid_code_error
 
     if not verify_otp(payload.verification_code, user.reset_code_hash):
         user.reset_code_attempts += 1
         db.commit()
+        logger.warning(f"Password reset attempted with wrong code: user_id={user.id} attempts={user.reset_code_attempts}")
         raise invalid_code_error
 
     # Code sahi hai — password update karo, code single-use hai to clear karo
@@ -315,6 +335,8 @@ async def reset_password(payload: ResetPasswordRequest, db: db_dependency):
     user.reset_code_attempts = 0
     user.reset_code_last_sent_at = None
     db.commit()
+
+    logger.info(f"Password reset successful — user_id={user.id} email={user.email}")
 
     return {"message": "Password reset successfully. Please sign in with your new password."}
 
@@ -330,6 +352,7 @@ async def change_password(
     Logged-in user apna password change kar sakta hai — old password verify karke.
     """
     if not pwd_context.verify(payload.old_password, current_user.password_hash):
+        logger.warning(f"Change password failed — wrong old password: user_id={current_user.id}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Old password is incorrect"
@@ -343,5 +366,6 @@ async def change_password(
 
     current_user.password_hash = pwd_context.hash(payload.new_password)
     db.commit()
+    logger.info(f"Password changed — user_id={current_user.id} email={current_user.email}")
 
     return {"message": "Password changed successfully"}

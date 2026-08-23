@@ -1,8 +1,12 @@
+import logging
+
 from fastapi import APIRouter, HTTPException, status, Depends
 from pydantic import BaseModel, Field
 from models.shop_owner import ShopOwner
 from utils.auth import get_current_user
 from RAG_src.search import RAGSearch
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/rag", tags=["RAG Search"])
 
@@ -35,12 +39,17 @@ async def search(
             detail="Query cannot be empty"
         )
 
+    logger.info(f"RAG query received — user_id={current_user.id} query={payload.query!r}")
+
     try:
         answer = rag.handle_message(payload.query, user_id=current_user.id)
     except Exception as e:
+        logger.exception(f"RAG search failed — user_id={current_user.id} query={payload.query!r}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Search failed: {str(e)}"
         )
+
+    logger.info(f"RAG query answered — user_id={current_user.id}")
 
     return QueryResponse(query=payload.query, answer=answer)

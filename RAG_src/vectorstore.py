@@ -1,6 +1,7 @@
 import sys
 import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+import logging
 import uuid
 import faiss
 import numpy as np
@@ -10,6 +11,8 @@ from dotenv import load_dotenv
 from RAG_src.embedding import EmbeddingPipeline
 
 load_dotenv()
+
+logger = logging.getLogger(__name__)
 
 
 class FaissVectorStore:
@@ -39,7 +42,7 @@ class FaissVectorStore:
             self._embed_model = SentenceTransformer(embedding_model)
             self._use_openai = False
 
-        print(f"[INFO] Embedding model: {embedding_model}")
+        logger.info(f"Embedding model initialized: {embedding_model}")
 
     # ── User ka alag folder ───────────────────────────────────────────────────
     def _get_user_dir(self, user_id: int) -> str:
@@ -56,7 +59,7 @@ class FaissVectorStore:
 
     # ── Build — user ka alag index ────────────────────────────────────────────
     def build_from_documents(self, documents: List[Any], user_id: int):
-        print(f"[INFO] Building index for user {user_id}...")
+        logger.info(f"Building index for user {user_id}...")
 
         emb_pipe = EmbeddingPipeline(
             model_name=self.embedding_model,
@@ -101,7 +104,7 @@ class FaissVectorStore:
         with open(meta_path, "wb") as f:
             pickle.dump(existing_meta, f)
 
-        print(f"[INFO] Index saved for user {user_id} — chunks: {len(chunk_ids)}")
+        logger.info(f"Index saved for user {user_id} — chunks: {len(chunk_ids)}")
 
         # Chunk IDs return karo — scheduler DB me save karega
         return chunk_ids
@@ -109,7 +112,7 @@ class FaissVectorStore:
     # ── Query — sirf us user ka index ────────────────────────────────────────
     def query(self, query_text: str, top_k: int = 5, user_id: int = None) -> List[dict]:
         if user_id is None:
-            print("[WARN] user_id not provided — returning empty results.")
+            logger.warning("query() called with no user_id — returning empty results.")
             return []
 
         user_dir = self._get_user_dir(user_id)
@@ -117,7 +120,7 @@ class FaissVectorStore:
         meta_path  = os.path.join(user_dir, "metadata.pkl")
 
         if not os.path.exists(faiss_path):
-            print(f"[WARN] No index found for user {user_id}.")
+            logger.warning(f"No index found for user {user_id}.")
             return []
 
         index = faiss.read_index(faiss_path)
@@ -136,7 +139,7 @@ class FaissVectorStore:
                     "metadata": metadata[idx]
                 })
 
-        print(f"[INFO] Found {len(results)} results for user {user_id}")
+        logger.info(f"Found {len(results)} results for user {user_id}")
         return results
         
     def delete_by_ids(self, chunk_ids: list, user_id: int) -> bool:
@@ -148,7 +151,7 @@ class FaissVectorStore:
         meta_path  = os.path.join(user_dir, "metadata.pkl")
 
         if not os.path.exists(faiss_path):
-            print(f"[DELETE] No index found for user {user_id}")
+            logger.warning(f"delete_by_ids: no index found for user {user_id}")
             return False
 
         # Metadata load karo
@@ -165,13 +168,13 @@ class FaissVectorStore:
         ]
 
         deleted_count = len(metadata) - len(remaining_meta)
-        print(f"[DELETE] Removing {deleted_count} chunks for user {user_id}")
+        logger.info(f"Removing {deleted_count} chunks for user {user_id}")
 
         if not remaining_meta:
             # Koi chunk nahi bacha — index aur metadata delete karo
             os.remove(faiss_path)
             os.remove(meta_path)
-            print(f"[DELETE] Index cleared for user {user_id}")
+            logger.info(f"Index cleared for user {user_id}")
             return True
 
         # Remaining chunks se naya index banao
@@ -187,5 +190,5 @@ class FaissVectorStore:
         with open(meta_path, "wb") as f:
             pickle.dump(remaining_meta, f)
 
-        print(f"[DELETE] Done — {len(remaining_meta)} chunks remaining")
+        logger.info(f"Delete done — {len(remaining_meta)} chunks remaining for user {user_id}")
         return True
