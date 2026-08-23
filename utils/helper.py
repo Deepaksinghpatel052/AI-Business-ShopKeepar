@@ -1,11 +1,14 @@
 import os
 import io
 import json
+import logging
 from openai import OpenAI
 from dotenv import load_dotenv
 from utils.prompets import document_verification_prompt
 from RAG_src.vectorstore import FaissVectorStore
 load_dotenv()
+
+logger = logging.getLogger(__name__)
 
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
@@ -29,8 +32,9 @@ def is_business_document(file_path: str) -> tuple[bool, str]:
                 text += page.extract_text() or ""
         else:
             text = file_bytes.decode("utf-8", errors="ignore")
-        # print(f"[INFO] Extracted text from {file_path}: {text[:100]}...")  # Debugging
+        logger.debug(f"Extracted text from {file_path}: {text[:100]}...")
         if not text.strip():
+            logger.warning(f"No extractable text in document: {file_path}")
             return False, "Could not extract text from document"
 
         prompt = document_verification_prompt(text)
@@ -44,9 +48,11 @@ def is_business_document(file_path: str) -> tuple[bool, str]:
         )
 
         result = json.loads(response.choices[0].message.content)
+        logger.info(f"Document verification for {file_path}: is_business={result['is_business']} reason={result['reason']}")
         return result["is_business"], result["reason"]
 
     except Exception as e:
+        logger.exception(f"Document verification failed: {file_path}")
         return False, f"Verification failed: {str(e)}"
 
 
@@ -55,12 +61,14 @@ def delete_document_from_vector_db(doc, user_id: int) -> bool:
     Document ke faiss_ids use karke vector DB se chunks delete karo.
     """
     if not doc.faiss_ids:
-        print(f"[DELETE] No faiss_ids found for document: {doc.original_name}")
+        logger.warning(f"No faiss_ids found for document: {doc.original_name}")
         return False
 
     chunk_ids = json.loads(doc.faiss_ids)
     store = FaissVectorStore("faiss_store", embedding_model="openai")
-    return store.delete_by_ids(chunk_ids, user_id=user_id)
+    deleted = store.delete_by_ids(chunk_ids, user_id=user_id)
+    logger.info(f"Vector chunks deleted for document: {doc.original_name} — success={deleted}")
+    return deleted
 
 if __name__ == "__main__":
     file_paths = [

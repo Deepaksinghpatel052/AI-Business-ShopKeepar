@@ -2,6 +2,7 @@ import sys
 import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+import logging
 from dotenv import load_dotenv
 from RAG_src.vectorstore import FaissVectorStore
 from langchain_openai import ChatOpenAI
@@ -16,6 +17,8 @@ from datetime import date
 DEMO_PERSIST_DIR = os.path.join("faiss_store", "demo")
 
 load_dotenv()
+
+logger = logging.getLogger(__name__)
 
 
 class RAGSearch:
@@ -34,14 +37,14 @@ class RAGSearch:
         if os.path.exists(faiss_path) and os.path.exists(meta_path):
             self.vectorstore.load()
         else:
-            print("[WARN] No existing vector store found. Build it first using vectorstore.py")
+            logger.warning("No existing vector store found at persist_dir root. Build it first using vectorstore.py")
 
         # OpenAI LLM
         self.llm = ChatOpenAI(
             model=llm_model,
             api_key=os.getenv("OPENAI_API_KEY")
         )
-        print(f"[INFO] OpenAI LLM initialized: {llm_model}")
+        logger.info(f"OpenAI LLM initialized: {llm_model}")
 
     def handle_message(self, message: str, user_id: int) -> str:
         import json
@@ -75,9 +78,10 @@ class RAGSearch:
         try:
             result = json.loads(intent_response.content)
             intent = result["intent"]
-        except:
+        except Exception:
+            logger.warning(f"Could not parse intent classification response — user_id={user_id} raw={intent_response.content!r}")
             intent = "unclear"
-        print(f"intent : {intent}")
+        logger.info(f"Intent detected: {intent} — user_id={user_id}")
         # Step 2 — Intent ke hisaab se call karo
         if intent == "query":
             return self.search_and_summarize(message, user_id=user_id)
@@ -97,10 +101,12 @@ class RAGSearch:
         try:
             entry = db.query(ChatEntry).filter(ChatEntry.id == entry_id).first()
             if not entry:
+                logger.warning(f"Confirm requested for missing chat entry: entry_id={entry_id}")
                 return "Entry not found."
 
             entry.status = ChatStatus.CONFIRMED
             db.commit()
+            logger.info(f"Chat entry confirmed: entry_id={entry_id} user_id={entry.user_id}")
             return f"Data confirmed and saved successfully! It will be processed at end of day."
         finally:
             db.close()
@@ -114,10 +120,13 @@ class RAGSearch:
         try:
             entry = db.query(ChatEntry).filter(ChatEntry.id == entry_id).first()
             if not entry:
+                logger.warning(f"Reject requested for missing chat entry: entry_id={entry_id}")
                 return "Entry not found."
 
+            user_id = entry.user_id
             db.delete(entry)
             db.commit()
+            logger.info(f"Chat entry rejected and removed: entry_id={entry_id} user_id={user_id}")
             return "Data rejected and removed. Please provide the correct information."
         finally:
             db.close()
@@ -127,14 +136,14 @@ class RAGSearch:
         extract_prompt = extract_and_confirm_extract_prompt(message)
 
         extract_response = self.llm.invoke([extract_prompt])
-        print(f"[DEBUG] LLM raw response: {extract_response.content}")
+        logger.debug(f"Extraction LLM raw response — user_id={user_id}: {extract_response.content}")
 
         try:
             raw = extract_response.content.strip()
             raw = raw.removeprefix("```json").removeprefix("```").removesuffix("```").strip()
             extracted = json.loads(raw)
-        except Exception as e:
-            print(f"[DEBUG] JSON parse error: {e}")
+        except Exception:
+            logger.warning(f"Could not parse extracted data JSON — user_id={user_id}")
             return "Could not understand the data. Please try again with more details."
 
         # Confirmation message banao
@@ -151,7 +160,7 @@ class RAGSearch:
             db.add(entry)
             db.commit()
             db.refresh(entry)
-            print(f"[DEBUG] Entry saved with ID: {entry.id}")
+            logger.info(f"Pending chat entry saved — entry_id={entry.id} user_id={user_id}")
         finally:
             db.close()
 
@@ -170,6 +179,7 @@ class RAGSearch:
             user = db.query(ShopOwner).filter(ShopOwner.id == user_id).first()
 
             if user and user.demo_mode_enabled and user.demo_dataset:
+                logger.info(f"Searching demo dataset '{user.demo_dataset}' — user_id={user_id}")
                 demo_store = FaissVectorStore(DEMO_PERSIST_DIR, embedding_model=self.vectorstore.embedding_model)
                 results = demo_store.query(enhanced_query, top_k=top_k, user_id=user.demo_dataset)
             else:
@@ -199,8 +209,9 @@ class RAGSearch:
             db.close()
 
         context = "\n\n".join(texts)
-        # print(f"[DEBUG] Context for summarization: {context[:500]}...")  # first 500 chars
+        logger.debug(f"Context for summarization — user_id={user_id}: {context[:500]}...")
         if not context:
+            logger.info(f"No relevant context found for query — user_id={user_id}")
             return "No relevant data found."
 
         prompt = search_and_summarize_prompt(query, context)

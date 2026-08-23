@@ -1,4 +1,5 @@
 import os
+import logging
 import smtplib
 import ssl
 from email.mime.multipart import MIMEMultipart
@@ -6,6 +7,8 @@ from email.mime.text import MIMEText
 from dotenv import load_dotenv
 
 load_dotenv()
+
+logger = logging.getLogger(__name__)
 
 SMTP_HOST       = os.getenv("SMTP_HOST")
 SMTP_PORT       = int(os.getenv("SMTP_PORT", 587))
@@ -35,12 +38,20 @@ def send_email(to_email: str, subject: str, html_body: str, text_body: str | Non
         message.attach(MIMEText(text_body, "plain"))
     message.attach(MIMEText(html_body, "html"))
 
-    context = ssl.create_default_context()
-    with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
-        if SMTP_USE_TLS:
-            server.starttls(context=context)
-        server.login(SMTP_USERNAME, SMTP_PASSWORD)
-        server.sendmail(SMTP_FROM_EMAIL, to_email, message.as_string())
+    logger.info(f"Sending email — to={to_email} subject={subject!r}")
+
+    try:
+        context = ssl.create_default_context()
+        with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
+            if SMTP_USE_TLS:
+                server.starttls(context=context)
+            server.login(SMTP_USERNAME, SMTP_PASSWORD)
+            server.sendmail(SMTP_FROM_EMAIL, to_email, message.as_string())
+    except Exception:
+        logger.exception(f"Failed to send email — to={to_email} subject={subject!r}")
+        raise
+
+    logger.info(f"Email sent successfully — to={to_email}")
 
 
 def send_verification_code_email(to_email: str, name: str, code: str, expires_in_minutes: int = 10) -> None:

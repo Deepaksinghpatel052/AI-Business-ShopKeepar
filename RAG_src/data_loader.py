@@ -1,9 +1,13 @@
+import logging
 from pathlib import Path
 from typing import List, Any
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_community.document_loaders import Docx2txtLoader
 from langchain_community.document_loaders.excel import UnstructuredExcelLoader
 from langchain_community.document_loaders import JSONLoader
+
+logger = logging.getLogger(__name__)
+
 
 def load_all_documents(file_paths: List[str]) -> List[Any]:
     """
@@ -14,19 +18,18 @@ def load_all_documents(file_paths: List[str]) -> List[Any]:
 
     # PDF files
     pdf_files = file_paths
-    print(f"[DEBUG] Found {len(pdf_files)} PDF files: {[str(f) for f in pdf_files]}")
+    logger.debug(f"Found {len(pdf_files)} PDF files: {[str(f) for f in pdf_files]}")
     for pdf_file in pdf_files:
         pdf_file = Path(pdf_file).resolve()
-        print(f"[DEBUG] Loading PDF: {pdf_file}")
+        logger.debug(f"Loading PDF: {pdf_file}")
         try:
             loader = PyPDFLoader(str(pdf_file))
             loaded = loader.load()
-            # print(f"[DEBUG] Loaded {len(loaded)} PDF docs from {pdf_file}")
             documents.extend(loaded)
-        except Exception as e:
-            print(f"[ERROR] Failed to load PDF {pdf_file}: {e}")
+        except Exception:
+            logger.exception(f"Failed to load PDF {pdf_file}")
 
-    # print(f"[DEBUG] Total loaded documents: {len(documents)}")
+    logger.debug(f"Total loaded documents: {len(documents)}")
     return documents
 
 # Example usage
