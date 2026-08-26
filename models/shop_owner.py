@@ -1,3 +1,4 @@
+import enum
 from datetime import datetime, timezone
 from sqlalchemy import Boolean, DateTime, Enum, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
@@ -6,6 +7,10 @@ from sqlalchemy.orm import DeclarativeBase
 class Base(DeclarativeBase):
     pass
 
+
+class UserType(str, enum.Enum):
+    ADMIN  = "admin"
+    MEMBER = "member"
 
 
 class ShopOwner(Base):
@@ -21,6 +26,7 @@ class ShopOwner(Base):
     plan             : Mapped[str]         = mapped_column(Enum('free', 'premium'), default='free')
     is_active        : Mapped[bool]        = mapped_column(Boolean, default=True)
     is_admin         : Mapped[bool]        = mapped_column(Boolean, default=False)
+    user_type        : Mapped[UserType]    = mapped_column(Enum(UserType), default=UserType.MEMBER, nullable=False)
     auth_provider    : Mapped[str]         = mapped_column(Enum('local', 'google', 'facebook'), default='local')
     auth_provider_id : Mapped[str | None]  = mapped_column(String(255), nullable=True)
     created_at       : Mapped[datetime]    = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))

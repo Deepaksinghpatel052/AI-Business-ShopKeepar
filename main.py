@@ -7,7 +7,7 @@ setup_logging()
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
-from routers import auth, document, query, demo
+from routers import auth, document, query, demo, membership
 
 logger = logging.getLogger(__name__)
 
@@ -17,6 +17,7 @@ app.include_router(auth.router)
 app.include_router(document.router)
 app.include_router(query.router)
 app.include_router(demo.router)
+app.include_router(membership.router)
 
 
 @app.middleware("http")
