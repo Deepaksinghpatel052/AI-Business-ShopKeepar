@@ -1,0 +1,34 @@
+# Version control / IDE / Claude
+.git
+.gitignore
+.claude
+
+# Python virtual env / caches
+venv/
+.venv/
+__pycache__/
+**/__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+
+# Secrets — never bake into the image
+.env
+
+# Runtime state — mounted as volumes instead
+bizinsight.db
+*.db
+*.sqlite3
+faiss_store/
+media/
+logs/
+report/
+
+# Docker files themselves
+Dockerfile
+docker-compose*.yml
+.dockerignore
+
+# Misc
+command.txt
+README.md

@@ -60,6 +60,29 @@ ACCESS_TOKEN_EXPIRE_MINUTES=60
 UPLOAD_DIR=./media/uploads
 ```
 
+## Running with Docker
+
+```bash
+# 1. Make sure .env exists with real values (see env.example)
+cp env.example .env
+
+# 2. Build and start the app (also runs `alembic upgrade head` on startup)
+docker compose up --build
+```
+
+The app will be available at http://localhost:8000.
+
+Notes:
+- `bizinsight.db`, `faiss_store/`, `media/`, and `logs/` are bind-mounted into the
+  container so data persists across rebuilts/restarts. All four must already exist
+  on the host before the first `docker compose up` (they do in this repo).
+- `sentence-transformers`/`torch` are intentionally **not** installed in the image —
+  the codebase always constructs `FaissVectorStore`/`EmbeddingPipeline` with
+  `embedding_model="openai"`, so the local-model fallback path is currently dead
+  code. Add them back to `requirements.txt` if you wire up a non-OpenAI embedding
+  model later.
+- To run the test suite inside the container: `docker compose exec app pytest`.
+
 ## API Endpoints
 
 | Method | Endpoint | Auth | Description |
