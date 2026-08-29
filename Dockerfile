@@ -27,7 +27,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY --from=builder /root/.local /home/appuser/.local
 COPY --chown=appuser:appuser . .
 
-RUN mkdir -p media/uploads media/reports logs faiss_store \
+RUN mkdir -p data media/uploads media/reports logs faiss_store \
     && chmod +x docker-entrypoint.sh \
     && chown -R appuser:appuser /app
 

@@ -73,12 +73,15 @@ docker compose up --build
 The app will be available at http://localhost:8080.
 
 Notes:
-- `data/` (holds `bizinsight.db`), `faiss_store/`, `media/`, and `logs/` are
-  bind-mounted into the container so data persists across rebuilds/restarts.
+- The database (`bizinsight.db`), `faiss_store/`, `media/`, and `logs/` live in
+  Docker-managed named volumes (`app_data`, `app_faiss_store`, `app_media`,
+  `app_logs`), not host folders. Docker creates and owns them automatically —
+  nothing to `mkdir` or `chown` by hand, and it works the same on any host.
   `DATABASE_URL` is overridden in `docker-compose.yml` to point at
-  `data/bizinsight.db` — a directory mount is used instead of mounting the
-  sqlite file directly, since Docker silently turns a missing single-file
-  bind mount into an empty directory, which breaks sqlite.
+  `/app/data/bizinsight.db` inside the `app_data` volume.
+- To back up the data: `docker run --rm -v ai-shopkeepar_app_data:/data -v "$PWD":/backup alpine tar czf /backup/data-backup.tar.gz -C /data .`
+  (swap the volume name for `app_faiss_store`/`app_media` to back those up too;
+  check the actual names with `docker volume ls`).
 - `sentence-transformers`/`torch` are intentionally **not** installed in the image —
   the codebase always constructs `FaissVectorStore`/`EmbeddingPipeline` with
   `embedding_model="openai"`, so the local-model fallback path is currently dead
