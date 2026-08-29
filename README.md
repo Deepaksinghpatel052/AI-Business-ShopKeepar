@@ -70,12 +70,15 @@ cp env.example .env
 docker compose up --build
 ```
 
-The app will be available at http://localhost:8000.
+The app will be available at http://localhost:8080.
 
 Notes:
-- `bizinsight.db`, `faiss_store/`, `media/`, and `logs/` are bind-mounted into the
-  container so data persists across rebuilts/restarts. All four must already exist
-  on the host before the first `docker compose up` (they do in this repo).
+- `data/` (holds `bizinsight.db`), `faiss_store/`, `media/`, and `logs/` are
+  bind-mounted into the container so data persists across rebuilds/restarts.
+  `DATABASE_URL` is overridden in `docker-compose.yml` to point at
+  `data/bizinsight.db` — a directory mount is used instead of mounting the
+  sqlite file directly, since Docker silently turns a missing single-file
+  bind mount into an empty directory, which breaks sqlite.
 - `sentence-transformers`/`torch` are intentionally **not** installed in the image —
   the codebase always constructs `FaissVectorStore`/`EmbeddingPipeline` with
   `embedding_model="openai"`, so the local-model fallback path is currently dead
