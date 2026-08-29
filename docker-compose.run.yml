@@ -8,8 +8,14 @@ services:
     environment:
       - DATABASE_URL=sqlite:////app/data/bizinsight.db
     volumes:
-      - ./data:/app/data
-      - ./faiss_store:/app/faiss_store
-      - ./media:/app/media
-      - ./logs:/app/logs
+      - app_data:/app/data
+      - app_faiss_store:/app/faiss_store
+      - app_media:/app/media
+      - app_logs:/app/logs
     restart: unless-stopped
+
+volumes:
+  app_data:
+  app_faiss_store:
+  app_media:
+  app_logs:
