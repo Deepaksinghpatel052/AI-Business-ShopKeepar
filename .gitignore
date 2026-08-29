@@ -30,3 +30,6 @@ media/
 # Alembic
 alembic/versions/*.py
 command.txt
+
+# Exported Docker images
+*.tar
