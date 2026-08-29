@@ -28,6 +28,7 @@ report/
 Dockerfile
 docker-compose*.yml
 .dockerignore
+*.tar
 
 # Misc
 command.txt
