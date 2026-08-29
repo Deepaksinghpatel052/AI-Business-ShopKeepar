@@ -20,7 +20,6 @@ bizinsight.db
 *.db
 *.sqlite3
 faiss_store/
-media/
 logs/
 report/
 
