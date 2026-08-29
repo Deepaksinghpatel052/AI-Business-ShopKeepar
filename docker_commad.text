@@ -1,0 +1,106 @@
+AI ShopKeeper — Running the Project on a Server with Docker
+=============================================================
+
+Prerequisites on the server
+----------------------------
+- Docker Engine + Docker Compose plugin installed
+    (check: `docker --version` and `docker compose version`)
+- Port 8080 open in the server's firewall/security group
+- Enough disk space for the image (~700 MB) + your data
+
+Step 1 — Get the code onto the server
+--------------------------------------
+    git clone <repo-url>
+    cd AI-ShopKeepar
+    git checkout Create_docker_files    (or main, once merged)
+
+Step 2 — Configure environment variables
+------------------------------------------
+    cp env.example .env
+    nano .env
+
+Fill in real values for:
+    SECRET_KEY, ALGORITHM, ACCESS_TOKEN_EXPIRE_MINUTES
+    OPENAI_API_KEY, OPENAI_EMBEDDING_MODEL, OPENAI_CHAT_MODEL
+    SMTP_HOST / SMTP_PORT / SMTP_USERNAME / SMTP_PASSWORD / SMTP_FROM_EMAIL
+
+Never commit this .env file or share it outside the team — it holds
+real secrets (API keys, mail credentials).
+
+Step 3 — Create the persistent data folders
+----------------------------------------------
+These are bind-mounted into the container so data survives rebuilds:
+
+    mkdir -p data faiss_store media logs
+
+(If they're missing, the entrypoint will still create the sqlite path
+itself, but faiss_store/media/logs should exist so uploads/reports/logs
+land in the right place.)
+
+Step 4 — Build and start the app
+-----------------------------------
+    docker compose up -d --build
+
+This will:
+  1. Build the image from the Dockerfile (multi-stage, non-root user)
+  2. Run `alembic upgrade head` automatically on container start
+  3. Start uvicorn inside the container on port 8000
+  4. Expose it on the server at port 8080 (see docker-compose.yml:
+     "8080:8000")
+
+Step 5 — Verify it's running
+--------------------------------
+    docker compose ps
+    curl http://localhost:8080/
+        -> should return {"Hello":"World"}
+
+    docker compose logs -f app
+        -> watch startup logs / live request logs
+
+Managing the running app
+----------------------------
+    docker compose stop            Stop the container (keep it around)
+    docker compose start           Start it again
+    docker compose restart         Restart
+    docker compose down            Stop and remove the container/network
+    docker compose logs -f app     Tail logs
+    docker compose exec app pytest Run the test suite inside the container
+
+Deploying an update (new code pulled in)
+--------------------------------------------
+    git pull
+    docker compose up -d --build
+        -> rebuilds the image and recreates the container;
+           data/, faiss_store/, media/, logs/ are untouched.
+
+Backing up data
+-------------------
+Everything that matters lives on the host, not inside the container:
+    data/bizinsight.db     - the SQLite database
+    faiss_store/           - per-user vector search indexes
+    media/                 - uploaded files, generated reports
+    logs/                  - application logs
+
+Back these four folders up regularly (they're bind mounts, so a plain
+file copy / rsync / tar works — no need to touch Docker for this).
+
+Changing the exposed port
+------------------------------
+Edit the `ports:` line in docker-compose.yml, e.g. to use 80 instead
+of 8080:
+    ports:
+      - "80:8000"
+Then `docker compose up -d` again. The app always listens on 8000
+inside the container — only the left-hand (host) side needs to change.
+
+Troubleshooting
+--------------------
+- "unable to open database file" on startup: shouldn't happen anymore
+  (the entrypoint auto-creates the sqlite parent directory), but if it
+  does, check that `data/` exists and is writable by the docker daemon.
+- App unreachable from outside the server: check the firewall/security
+  group allows inbound traffic on port 8080, and that
+  `docker compose ps` shows the container as "healthy".
+- Check `.env` is present and has valid values — a missing .env means
+  no OPENAI_API_KEY, which breaks the RAG/chat features (auth and
+  uploads still work).
