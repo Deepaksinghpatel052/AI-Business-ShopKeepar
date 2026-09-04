@@ -271,13 +271,13 @@ Lets a logged-in user change their own password.
 
 ## Document (`/document`)
 
-These endpoints manage the source documents that feed the AI search — this is where a shop owner's business data (invoices, bills, records) enters the system before it can be asked about via `/rag/search`. All endpoints require **Bearer token** auth. Only PDF files are currently accepted (`application/pdf`), max size **10 MB**.
+These endpoints manage the source documents that feed the AI search — this is where a shop owner's business data (invoices, bills, records) enters the system before it can be asked about via `/rag/search`. All endpoints require **Bearer token** auth. Only PDF files are currently accepted (`application/pdf`), max size **10 MB**. Documents are stored in a **private S3 bucket** — there is no public URL for a file; use `GET /document/{document_id}/download-url` to get a short-lived download link.
 
 ### `POST /document/upload-file`
 **Purpose:** Upload a new business document so it can be processed and later queried through AI search.
 **Auth:** Required
 
-Uploads a document (PDF) for the current user. File is saved to disk under a per-user/shop/date folder and a `Document` record is created for later RAG processing.
+Uploads a document (PDF) for the current user. The file is uploaded to a private S3 bucket under a per-user/shop/date key prefix and a `Document` record is created for later RAG processing.
 
 **Request** — `multipart/form-data`
 | Field | Type | Description |
@@ -318,7 +318,6 @@ Lists all documents uploaded by the current user, newest first.
     {
       "id": 12,
       "original_name": "invoice.pdf",
-      "file_path": "./uploaded_files/1/my_kirana_store/2026/08/31/abcd1234.pdf",
       "file_type": "pdf",
       "file_size_kb": 200.0,
       "uploaded_at": "2026-08-31T10:15:00Z",
@@ -329,13 +328,46 @@ Lists all documents uploaded by the current user, newest first.
 }
 ```
 
+Note: the bucket is private, so no file URL is included here. To view/download a specific file, call `GET /document/{document_id}/download-url` with its `id`.
+
+---
+
+### `GET /document/{document_id}/download-url`
+**Purpose:** Get a short-lived, presigned S3 URL to actually download/view one document, since the bucket has no public access.
+**Auth:** Required
+
+Generates a fresh presigned URL each time it's called — deliberately not included in `GET /document/my-files`, since presigned URLs expire quickly and there's no point generating one for every file in a list the user hasn't opened yet. Call this endpoint on demand, right when the user wants to open a specific file.
+
+**Path params**
+| Param | Type | Description |
+|---|---|---|
+| `document_id` | int | ID of the document to get a download link for |
+
+**Response `200 OK`**
+```json
+{
+  "document_id": 12,
+  "original_name": "invoice.pdf",
+  "download_url": "https://<bucket>.s3.<region>.amazonaws.com/1/my_kirana_store/2026/08/31/abcd1234.pdf?X-Amz-Algorithm=...&X-Amz-Signature=...",
+  "expires_in": 600
+}
+```
+
+The `download_url` expires after `expires_in` seconds — request a new one if it's no longer needed by then.
+
+**Errors**
+| Status | Reason |
+|---|---|
+| `404 Not Found` | Document doesn't exist or isn't owned by the current user |
+| `500 Internal Server Error` | Failed to generate the presigned URL |
+
 ---
 
 ### `PUT /document/edit/{document_id}`
 **Purpose:** Let a user swap out an outdated/incorrect document (e.g. a corrected invoice) for a fresh version, which triggers re-processing into the AI search index.
 **Auth:** Required
 
-Replaces an existing document owned by the current user with a new file. The old file is deleted from disk and re-processing is triggered (status set to `UPDATE`).
+Replaces an existing document owned by the current user with a new file. The old file is deleted from S3 and re-processing is triggered (status set to `UPDATE`).
 
 **Path params**
 | Param | Type | Description |

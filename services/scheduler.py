@@ -13,6 +13,7 @@ from RAG_src.vectorstore import FaissVectorStore
 from utils.database import SessionLocal
 from dotenv import load_dotenv
 from utils.helper import is_business_document
+import services.s3_storage as s3_storage
 
 load_dotenv()
 
@@ -48,7 +49,13 @@ def process_pending_documents():
             for d in user_pending_docs:
                 logger.info(f"[SCHEDULER] Processing: {d.original_name} (document_id={d.id} user_id={user_id})")
 
-                user_documents = load_all_documents([d.file_path])
+                try:
+                    with s3_storage.s3_tempfile(d.file_path) as local_path:
+                        user_documents = load_all_documents([local_path])
+                except RuntimeError:
+                    logger.exception(f"[SCHEDULER] Could not download from S3, skipping: {d.original_name} (document_id={d.id})")
+                    continue
+
                 if not user_documents:
                     logger.warning(f"[SCHEDULER] No content loaded from: {d.original_name} (document_id={d.id})")
                     continue
@@ -155,7 +162,12 @@ def verify_pending_documents():
         for doc in pending_docs:
             logger.info(f"[VERIFY] Verifying: {doc.original_name} (document_id={doc.id})")
 
-            is_valid, reason = is_business_document(doc.file_path)
+            try:
+                with s3_storage.s3_tempfile(doc.file_path) as local_path:
+                    is_valid, reason = is_business_document(local_path)
+            except RuntimeError:
+                logger.exception(f"[VERIFY] Could not download from S3, skipping: {doc.original_name} (document_id={doc.id})")
+                continue
 
             if is_valid:
                 doc.process = ProcessStatus.PROCESS
@@ -330,17 +342,26 @@ def generate_daily_pdf():
                                     leftMargin=20*mm, rightMargin=20*mm,
                                     topMargin=20*mm, bottomMargin=20*mm)
             doc.build(story)
-            logger.info(f"[DAILY PDF] PDF created: {pdf_path} (user_id={user_id})")
+            logger.info(f"[DAILY PDF] PDF created locally: {pdf_path} (user_id={user_id})")
+
+            # Local file sirf scratch space hai — canonical copy S3 pe jaati hai
+            with open(pdf_path, "rb") as f:
+                pdf_bytes = f.read()
+
+            object_key = f"{user_id}/chat_data/{today.year}/{str(today.month).zfill(2)}/{str(today.day).zfill(2)}/{pdf_filename}"
+            s3_storage.upload_bytes(object_key, pdf_bytes, "application/pdf")
+            os.remove(pdf_path)
+            logger.info(f"[DAILY PDF] Uploaded to S3: {object_key} (user_id={user_id})")
 
             # Documents table me add karo
             new_doc = Document(
                 user_id=user_id,
                 original_name=pdf_filename,
                 stored_name=pdf_filename,
-                file_path=pdf_path,
+                file_path=object_key,
                 file_type="pdf",
                 mime_type="application/pdf",
-                file_size=os.path.getsize(pdf_path),
+                file_size=len(pdf_bytes),
                 process=ProcessStatus.PENDING,
             )
             db.add(new_doc)

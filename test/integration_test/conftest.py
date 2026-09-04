@@ -22,8 +22,10 @@ before the fixture ran, like the RAGSearch singleton in routers/query.py -- safe
 inside tmp_path. This is required after a real incident where a test without this
 kind of isolation overwrote real per-user FAISS index files.
 """
+import contextlib
 import io
 import json
+import uuid
 from types import SimpleNamespace
 
 import pytest
@@ -43,8 +45,47 @@ import utils.helper as helper_module
 import services.scheduler as scheduler_module
 import RAG_src.search as search_module
 import routers.document as document_module
+import services.s3_storage as s3_storage_module
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+
+# ── Fake S3 (never make real AWS calls in tests) ────────────────────────────
+
+@pytest.fixture(autouse=True)
+def fake_s3(monkeypatch, tmp_path):
+    """
+    Replaces services.s3_storage's functions with an in-memory dict-backed
+    fake, so the whole upload -> verify -> process -> edit pipeline exercised
+    by these integration tests never touches real AWS. Returns the backing
+    dict (object key -> bytes).
+    """
+    store = {}
+
+    def fake_upload_bytes(key, data, content_type):
+        store[key] = data
+
+    def fake_delete_object(key):
+        store.pop(key, None)
+
+    def fake_generate_presigned_download_url(key, expires_in=None):
+        ttl = expires_in or s3_storage_module.S3_PRESIGNED_URL_EXPIRE_SECONDS
+        return f"https://fake-s3.test/{key}?expires_in={ttl}"
+
+    @contextlib.contextmanager
+    def fake_s3_tempfile(key, suffix=".pdf"):
+        local_path = tmp_path / f"s3_tmp_{uuid.uuid4().hex}{suffix}"
+        local_path.write_bytes(store.get(key, b""))
+        try:
+            yield str(local_path)
+        finally:
+            local_path.unlink(missing_ok=True)
+
+    monkeypatch.setattr(s3_storage_module, "upload_bytes", fake_upload_bytes)
+    monkeypatch.setattr(s3_storage_module, "delete_object", fake_delete_object)
+    monkeypatch.setattr(s3_storage_module, "generate_presigned_download_url", fake_generate_presigned_download_url)
+    monkeypatch.setattr(s3_storage_module, "s3_tempfile", fake_s3_tempfile)
+    return store
 
 
 # ── Database (mock / in-memory only — never the real bizinsight.db) ───────────
@@ -81,14 +122,13 @@ def db_session(db_session_factory):
 def isolated_environment(monkeypatch, tmp_path, db_session_factory):
     """
     Runs every integration test from a throwaway cwd and points every module-level
-    SessionLocal / UPLOAD_DIR at the in-memory test DB and tmp folders. See module
-    docstring above for why this is mandatory and not optional per-file.
+    SessionLocal at the in-memory test DB. See module docstring above for why this
+    is mandatory and not optional per-file.
     """
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(scheduler_module, "SessionLocal", db_session_factory)
     monkeypatch.setattr(search_module, "SessionLocal", db_session_factory)
     monkeypatch.setattr(database_module, "SessionLocal", db_session_factory)
-    monkeypatch.setattr(document_module, "UPLOAD_DIR", str(tmp_path / "media" / "uploads"))
     return tmp_path
 
 

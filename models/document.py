@@ -21,7 +21,7 @@ class Document(Base):
     
     original_name: Mapped[str]      = mapped_column(String(255), nullable=False)  # user ka original file naam
     stored_name  : Mapped[str]      = mapped_column(String(255), nullable=False)  # disk pe save naam (unique)
-    file_path    : Mapped[str]      = mapped_column(String(512), nullable=False)  # full path
+    file_path    : Mapped[str]      = mapped_column(String(512), nullable=False)  # S3 object key (NOT a local filesystem path — see services/s3_storage.py)
     file_type    : Mapped[str]      = mapped_column(String(50),  nullable=False)  # pdf, docx, csv, etc
     mime_type    : Mapped[str]      = mapped_column(String(100), nullable=False)  # application/pdf etc
     file_size    : Mapped[int]      = mapped_column(BigInteger,  nullable=False)  # bytes me
