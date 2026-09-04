@@ -1,3 +1,4 @@
+import glob
 import io
 import json
 import os
@@ -36,7 +37,7 @@ def make_document(db_session, **overrides):
         user_id=1,
         original_name="report.pdf",
         stored_name="stored.pdf",
-        file_path="media/uploads/1/stored.pdf",
+        file_path="1/default_shop/2026/09/03/stored.pdf",
         file_type="pdf",
         mime_type="application/pdf",
         file_size=1234,
@@ -150,13 +151,19 @@ def test_process_pending_documents_empty_is_noop(db_session, monkeypatch):
 
 # ── verify_pending_documents ────────────────────────────────────────────────
 
-def test_verify_pending_documents_accepts_and_rejects(db_session, monkeypatch):
+def test_verify_pending_documents_accepts_and_rejects(db_session, monkeypatch, fake_s3):
     """PENDING documents are moved to PROCESS or REJECTED based on the business-document verdict."""
-    good_doc = make_document(db_session, file_path="good.pdf", process=ProcessStatus.PENDING)
-    bad_doc = make_document(db_session, file_path="bad.pdf", process=ProcessStatus.PENDING)
+    good_doc = make_document(db_session, file_path="1/good.pdf", process=ProcessStatus.PENDING)
+    bad_doc = make_document(db_session, file_path="1/bad.pdf", process=ProcessStatus.PENDING)
+    # is_business_document now receives a local temp path downloaded from S3, not the
+    # object key directly — seed distinguishable fake S3 content and decide off that.
+    fake_s3["1/good.pdf"] = b"good content"
+    fake_s3["1/bad.pdf"] = b"bad content"
 
     def fake_is_business_document(file_path):
-        if file_path == "good.pdf":
+        with open(file_path, "rb") as f:
+            content = f.read()
+        if content == b"good content":
             return True, "Looks like a sales report"
         return False, "Looks like a diary"
 
@@ -220,7 +227,7 @@ def test_handle_update_documents_empty_is_noop(monkeypatch):
 
 # ── generate_daily_pdf ───────────────────────────────────────────────────────
 
-def test_generate_daily_pdf_creates_document_and_clears_entries(db_session):
+def test_generate_daily_pdf_creates_document_and_clears_entries(db_session, fake_s3):
     """Confirmed chat entries for a user are rendered into a PDF, saved as a PENDING Document, and then cleared."""
     entry1 = ChatEntry(
         user_id=55, raw_message="sold 2 pens",
@@ -244,7 +251,10 @@ def test_generate_daily_pdf_creates_document_and_clears_entries(db_session):
     assert new_doc is not None
     assert new_doc.process == ProcessStatus.PENDING
     assert new_doc.file_type == "pdf"
-    assert os.path.exists(new_doc.file_path)
+    # file_path is now an S3 object key — confirm it landed in the (fake) bucket
+    # and the local scratch copy used during PDF generation was cleaned up.
+    assert new_doc.file_path in fake_s3
+    assert glob.glob("media/uploads/55/**/*.pdf", recursive=True) == []
 
 
 def test_generate_daily_pdf_empty_is_noop(db_session):

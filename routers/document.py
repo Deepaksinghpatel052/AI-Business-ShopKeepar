@@ -4,11 +4,12 @@ from utils.auth import get_current_user
 from models.shop_owner import ShopOwner
 from typing import Annotated
 from sqlalchemy.orm import Session
-import os, logging
+import logging
 from dotenv import load_dotenv
 from models.document import Document, ProcessStatus
 import uuid
 from datetime import datetime, timezone
+import services.s3_storage as s3_storage
 
 logger = logging.getLogger(__name__)
 
@@ -16,9 +17,6 @@ load_dotenv()
 
 router = APIRouter(prefix="/document", tags=["Document"])
 db_dependency = Annotated[Session, Depends(get_db)]
-
-UPLOAD_DIR = os.getenv("UPLOAD_DIR", "./uploaded_files")
-os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 MAX_FILE_SIZE = 10 * 1024 * 1024  # 10 MB
 
@@ -60,25 +58,28 @@ async def file_upload(
     file_ext = ALLOWED_MIME_TYPES[file.content_type]
     stored_name = f"{uuid.uuid4().hex}.{file_ext}"
 
-    # User ka alag folder
+    # User ka alag S3 key prefix
     now = datetime.now(timezone.utc)
     shop_name = current_user.shop_name or "default"
     shop_name_clean = "".join(c if c.isalnum() else "_" for c in shop_name).lower()
-    user_folder = f"{UPLOAD_DIR}/{current_user.id}/{shop_name_clean}/{now.year}/{str(now.month).zfill(2)}/{str(now.day).zfill(2)}"
-    os.makedirs(user_folder, exist_ok=True)
+    object_key = f"{current_user.id}/{shop_name_clean}/{now.year}/{str(now.month).zfill(2)}/{str(now.day).zfill(2)}/{stored_name}"
 
-    # File disk pe save karo
-    with open(f"{user_folder}/{stored_name}", "wb") as f:
-        f.write(file_bytes)
-
-    file_path_clean = f"{user_folder}/{stored_name}"
+    # S3 pe (private bucket) save karo
+    try:
+        s3_storage.upload_bytes(object_key, file_bytes, file.content_type)
+    except RuntimeError:
+        logger.exception(f"Upload failed — could not store file in S3: user_id={current_user.id}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to store document"
+        )
 
     # DB me record save karo
     document = Document(
         user_id=current_user.id,
         original_name=file.filename,
         stored_name=stored_name,
-        file_path=file_path_clean,
+        file_path=object_key,
         file_type=file_ext,
         mime_type=file.content_type,
         file_size=len(file_bytes),
@@ -120,6 +121,7 @@ async def get_my_files(
             {
                 "id": doc.id,
                 "original_name": doc.original_name,
+                "stored_name": doc.stored_name,
                 "file_path": doc.file_path,
                 "file_type": doc.file_type,
                 "file_size_kb": round(doc.file_size / 1024, 2),
@@ -129,6 +131,44 @@ async def get_my_files(
             }
             for doc in documents
         ]
+    }
+
+
+@router.get("/{document_id}/download-url")
+async def get_document_download_url(
+    document_id: int,
+    db: db_dependency,
+    current_user: ShopOwner = Depends(get_current_user),
+):
+    """
+    Ek specific document ke liye short-lived presigned S3 download URL do.
+    Bucket private hai — file access karne ka yahi ek tarika hai.
+    """
+    doc = db.query(Document).filter(
+        Document.id == document_id,
+        Document.user_id == current_user.id
+    ).first()
+
+    if not doc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Document not found"
+        )
+
+    try:
+        url = s3_storage.generate_presigned_download_url(doc.file_path)
+    except RuntimeError:
+        logger.exception(f"Presign failed — document_id={document_id} user_id={current_user.id}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to generate download URL"
+        )
+
+    return {
+        "document_id": doc.id,
+        "original_name": doc.original_name,
+        "download_url": url,
+        "expires_in": s3_storage.S3_PRESIGNED_URL_EXPIRE_SECONDS,
     }
 
 
@@ -174,11 +214,14 @@ async def edit_document(
             detail="File size exceeds 10 MB limit"
         )
 
-    # Purani file delete karo disk se
-    if doc.file_path and os.path.exists(doc.file_path):
-        os.remove(doc.file_path)
+    # Purani file S3 se delete karo (best-effort — orphaned object is low-cost,
+    # edit should still succeed even if this cleanup fails)
+    try:
+        s3_storage.delete_object(doc.file_path)
+    except RuntimeError:
+        logger.warning(f"Old file delete failed, continuing with edit — document_id={document_id}")
 
-    # Naya file save karo
+    # Naya file save karo — fresh key, purani key kabhi reuse nahi karte
     file_ext = ALLOWED_MIME_TYPES[file.content_type]
     stored_name = f"{uuid.uuid4().hex}.{file_ext}"
     now = datetime.now(timezone.utc)
@@ -187,17 +230,21 @@ async def edit_document(
         for c in (current_user.shop_name or "default")
     ).lower()
 
-    user_folder = f"{UPLOAD_DIR}/{current_user.id}/{shop_name_clean}/{now.year}/{str(now.month).zfill(2)}/{str(now.day).zfill(2)}"
-    os.makedirs(user_folder, exist_ok=True)
+    object_key = f"{current_user.id}/{shop_name_clean}/{now.year}/{str(now.month).zfill(2)}/{str(now.day).zfill(2)}/{stored_name}"
 
-    file_path = f"{user_folder}/{stored_name}"
-    with open(file_path, "wb") as f:
-        f.write(file_bytes)
+    try:
+        s3_storage.upload_bytes(object_key, file_bytes, file.content_type)
+    except RuntimeError:
+        logger.exception(f"Edit failed — could not store file in S3: document_id={document_id}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to store document"
+        )
 
     # Document table update karo
     doc.original_name  = file.filename
     doc.stored_name    = stored_name
-    doc.file_path      = file_path
+    doc.file_path      = object_key
     doc.file_type      = file_ext
     doc.mime_type      = file.content_type
     doc.file_size      = len(file_bytes)

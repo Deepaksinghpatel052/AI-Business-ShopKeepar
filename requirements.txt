@@ -26,6 +26,9 @@ reportlab==5.0.0
 # Config
 python-dotenv==1.2.2
 
+# Cloud storage
+boto3==1.43.87
+
 # RAG / LLM stack
 openai==2.53.0
 langchain-core==1.5.3

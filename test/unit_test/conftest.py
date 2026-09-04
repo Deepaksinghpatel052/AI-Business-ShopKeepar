@@ -10,9 +10,11 @@ Design notes:
 - Fixtures that touch the filesystem use pytest's built-in tmp_path so nothing is
   written into the real project folders (media/, faiss_store/).
 """
+import contextlib
 import io
 import os
 import sys
+import uuid
 
 import pytest
 from passlib.context import CryptContext
@@ -26,8 +28,48 @@ from models.shop_owner import Base, ShopOwner
 from models.document import Document, ProcessStatus  # noqa: F401 (registers table with Base)
 from models.chat_entry import ChatEntry, ChatStatus  # noqa: F401 (registers table with Base)
 from utils.database import get_db
+import services.s3_storage as s3_storage_module
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+
+# ── Fake S3 (never make real AWS calls in tests) ────────────────────────────
+
+@pytest.fixture(autouse=True)
+def fake_s3(monkeypatch, tmp_path):
+    """
+    Replaces services.s3_storage's functions with an in-memory dict-backed
+    fake, so document upload/edit/download-url and the scheduler's S3-backed
+    processing never touch real AWS. Returns the backing dict (object key ->
+    bytes) so tests can assert on what got "uploaded", or seed content for a
+    key before exercising code that downloads it.
+    """
+    store = {}
+
+    def fake_upload_bytes(key, data, content_type):
+        store[key] = data
+
+    def fake_delete_object(key):
+        store.pop(key, None)
+
+    def fake_generate_presigned_download_url(key, expires_in=None):
+        ttl = expires_in or s3_storage_module.S3_PRESIGNED_URL_EXPIRE_SECONDS
+        return f"https://fake-s3.test/{key}?expires_in={ttl}"
+
+    @contextlib.contextmanager
+    def fake_s3_tempfile(key, suffix=".pdf"):
+        local_path = tmp_path / f"s3_tmp_{uuid.uuid4().hex}{suffix}"
+        local_path.write_bytes(store.get(key, b""))
+        try:
+            yield str(local_path)
+        finally:
+            local_path.unlink(missing_ok=True)
+
+    monkeypatch.setattr(s3_storage_module, "upload_bytes", fake_upload_bytes)
+    monkeypatch.setattr(s3_storage_module, "delete_object", fake_delete_object)
+    monkeypatch.setattr(s3_storage_module, "generate_presigned_download_url", fake_generate_presigned_download_url)
+    monkeypatch.setattr(s3_storage_module, "s3_tempfile", fake_s3_tempfile)
+    return store
 
 
 # ── Database ──────────────────────────────────────────────────────────────────

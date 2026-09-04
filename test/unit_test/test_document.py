@@ -1,15 +1,3 @@
-import pytest
-
-import routers.document as document_module
-
-
-@pytest.fixture(autouse=True)
-def tmp_upload_dir(monkeypatch, tmp_path):
-    """Redirect all file uploads in this test module into a throwaway tmp folder."""
-    monkeypatch.setattr(document_module, "UPLOAD_DIR", str(tmp_path))
-    return tmp_path
-
-
 def test_upload_file_success(app_client, auth_headers, sample_pdf_bytes):
     """Uploading a valid PDF as an authenticated user returns 201 with the document's metadata."""
     headers = auth_headers(email="uploader@example.com", password="Passw0rd")
@@ -154,3 +142,52 @@ def test_edit_document_rejects_disallowed_content_type(app_client, auth_headers,
         files={"file": ("bad.txt", b"hello", "text/plain")},
     )
     assert resp.status_code == 400
+
+
+# ── GET /document/{document_id}/download-url ────────────────────────────────
+
+def test_download_url_returns_presigned_url_for_owned_document(app_client, auth_headers, sample_pdf_bytes, fake_s3):
+    """A document owner can fetch a presigned S3 download URL for their own file."""
+    headers = auth_headers(email="downloader@example.com", password="Passw0rd")
+    upload = app_client.post(
+        "/document/upload-file", headers=headers,
+        files={"file": ("invoice.pdf", sample_pdf_bytes, "application/pdf")},
+    )
+    document_id = upload.json()["id"]
+
+    resp = app_client.get(f"/document/{document_id}/download-url", headers=headers)
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["document_id"] == document_id
+    assert body["original_name"] == "invoice.pdf"
+    assert body["download_url"].startswith("https://fake-s3.test/")
+    assert body["expires_in"] > 0
+
+
+def test_download_url_requires_auth(app_client):
+    """GET /document/{id}/download-url rejects requests without a bearer token."""
+    resp = app_client.get("/document/1/download-url")
+    assert resp.status_code == 401
+
+
+def test_download_url_not_found_returns_404(app_client, auth_headers):
+    """Requesting a download URL for a nonexistent document id returns a 404."""
+    headers = auth_headers(email="downloader2@example.com", password="Passw0rd")
+    resp = app_client.get("/document/999999/download-url", headers=headers)
+    assert resp.status_code == 404
+
+
+def test_download_url_owned_by_another_user_returns_404(app_client, auth_headers, sample_pdf_bytes):
+    """A user cannot get a download URL for a document uploaded by a different user."""
+    headers_a = auth_headers(email="dl_owner_a@example.com", password="Passw0rd")
+    headers_b = auth_headers(email="dl_owner_b@example.com", password="Passw0rd")
+
+    upload = app_client.post(
+        "/document/upload-file", headers=headers_a,
+        files={"file": ("mine.pdf", sample_pdf_bytes, "application/pdf")},
+    )
+    document_id = upload.json()["id"]
+
+    resp = app_client.get(f"/document/{document_id}/download-url", headers=headers_b)
+    assert resp.status_code == 404
