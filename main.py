@@ -1,6 +1,7 @@
 import logging
 import time
-
+from contextlib import asynccontextmanager
+from services.scheduler import start_scheduler, stop_scheduler
 from utils.logger import setup_logging
 
 setup_logging()
@@ -11,7 +12,17 @@ from routers import auth, document, query, demo, membership
 
 logger = logging.getLogger(__name__)
 
-app = FastAPI()
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup — scheduler start
+    start_scheduler()
+    yield
+    # Shutdown — scheduler stop
+    stop_scheduler()
+
+
+app = FastAPI(lifespan=lifespan)
 
 app.include_router(auth.router)
 app.include_router(document.router)
