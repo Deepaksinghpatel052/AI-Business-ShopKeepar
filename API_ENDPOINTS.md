@@ -271,7 +271,7 @@ Lets a logged-in user change their own password.
 
 ## Document (`/document`)
 
-These endpoints manage the source documents that feed the AI search — this is where a shop owner's business data (invoices, bills, records) enters the system before it can be asked about via `/rag/search`. All endpoints require **Bearer token** auth. Only PDF files are currently accepted (`application/pdf`), max size **10 MB**. Documents are stored in a **private S3 bucket** — there is no public URL for a file; use `GET /document/{document_id}/download-url` to get a short-lived download link.
+These endpoints manage the source documents that feed the AI search — this is where a shop owner's business data (invoices, bills, records) enters the system before it can be asked about via `/rag/search`. All endpoints require **Bearer token** auth. Only PDF files are currently accepted (`application/pdf`), max size **10 MB**. Documents are stored in a **private S3 bucket** — there is no public URL for a file; use `GET /document/{document_id}/download` to fetch the file content (the backend proxies it, so no S3 URL is ever exposed to the client).
 
 ### `POST /document/upload-file`
 **Purpose:** Upload a new business document so it can be processed and later queried through AI search.
@@ -328,38 +328,28 @@ Lists all documents uploaded by the current user, newest first.
 }
 ```
 
-Note: the bucket is private, so no file URL is included here. To view/download a specific file, call `GET /document/{document_id}/download-url` with its `id`.
+Note: the bucket is private and no S3 URL is ever handed to the client. To view/download a specific file, call `GET /document/{document_id}/download` with its `id` — the backend fetches the object from S3 and streams the raw file content back.
 
 ---
 
-### `GET /document/{document_id}/download-url`
-**Purpose:** Get a short-lived, presigned S3 URL to actually download/view one document, since the bucket has no public access.
+### `GET /document/{document_id}/download`
+**Purpose:** Fetch the raw content of one document, since the S3 bucket is private and has no public access — the backend proxies the file so the client never sees an S3 URL.
 **Auth:** Required
 
-Generates a fresh presigned URL each time it's called — deliberately not included in `GET /document/my-files`, since presigned URLs expire quickly and there's no point generating one for every file in a list the user hasn't opened yet. Call this endpoint on demand, right when the user wants to open a specific file.
+Returns the file's actual bytes with `Content-Type` set to the document's stored MIME type and `Content-Disposition: inline; filename="<original_name>"`. Call this on demand, right when the user wants to open a specific file — not preemptively for every row in `GET /document/my-files`.
 
 **Path params**
 | Param | Type | Description |
 |---|---|---|
-| `document_id` | int | ID of the document to get a download link for |
+| `document_id` | int | ID of the document to download |
 
-**Response `200 OK`**
-```json
-{
-  "document_id": 12,
-  "original_name": "invoice.pdf",
-  "download_url": "https://<bucket>.s3.<region>.amazonaws.com/1/my_kirana_store/2026/08/31/abcd1234.pdf?X-Amz-Algorithm=...&X-Amz-Signature=...",
-  "expires_in": 600
-}
-```
-
-The `download_url` expires after `expires_in` seconds — request a new one if it's no longer needed by then.
+**Response `200 OK`** — binary file content (e.g. `application/pdf`), not JSON.
 
 **Errors**
 | Status | Reason |
 |---|---|
 | `404 Not Found` | Document doesn't exist or isn't owned by the current user |
-| `500 Internal Server Error` | Failed to generate the presigned URL |
+| `500 Internal Server Error` | Failed to fetch the object from S3 |
 
 ---
 

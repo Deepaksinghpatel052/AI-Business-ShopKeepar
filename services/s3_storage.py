@@ -3,8 +3,9 @@ Thin wrapper around boto3 for the app's private S3 document bucket.
 
 routers/document.py and services/scheduler.py only ever talk to S3 through the
 functions in this module — no other module should import boto3 directly. The
-bucket is private (Block Public Access on, no object ACLs), so the only way to
-read an object is a short-lived presigned GET URL generated on demand.
+bucket is private (Block Public Access on, no object ACLs) and clients never
+talk to S3 directly — the backend fetches object bytes and streams them back,
+so no S3 URL is ever exposed outside this module.
 """
 import contextlib
 import logging
@@ -22,7 +23,6 @@ load_dotenv()
 
 AWS_REGION = os.getenv("AWS_REGION")
 S3_BUCKET_NAME = os.getenv("S3_BUCKET_NAME")
-S3_PRESIGNED_URL_EXPIRE_SECONDS = int(os.getenv("S3_PRESIGNED_URL_EXPIRE_SECONDS", "600"))
 
 _s3_client = None
 
@@ -67,21 +67,14 @@ def delete_object(key: str) -> None:
         raise RuntimeError(f"Failed to delete object from S3: {key}")
 
 
-def generate_presigned_download_url(key: str, expires_in: int | None = None) -> str:
-    """
-    Sign a time-limited GET URL for `key`. This is a local signing operation
-    (no network call, no existence check) — it will happily sign a URL for a
-    since-deleted key, which will simply 403 when used.
-    """
+def download_bytes(key: str) -> bytes:
+    """Fetch an object's raw bytes from the private bucket."""
     try:
-        return get_s3_client().generate_presigned_url(
-            "get_object",
-            Params={"Bucket": S3_BUCKET_NAME, "Key": key},
-            ExpiresIn=expires_in or S3_PRESIGNED_URL_EXPIRE_SECONDS,
-        )
+        response = get_s3_client().get_object(Bucket=S3_BUCKET_NAME, Key=key)
+        return response["Body"].read()
     except (ClientError, BotoCoreError):
-        logger.exception(f"S3 presign failed — key={key}")
-        raise RuntimeError(f"Failed to generate presigned URL for: {key}")
+        logger.exception(f"S3 download failed — key={key}")
+        raise RuntimeError(f"Failed to download object from S3: {key}")
 
 
 @contextlib.contextmanager

@@ -61,7 +61,6 @@ AWS_ACCESS_KEY_ID=your-iam-user-access-key
 AWS_SECRET_ACCESS_KEY=your-iam-user-secret-key
 AWS_REGION=ap-south-1
 S3_BUCKET_NAME=your-private-s3-bucket
-S3_PRESIGNED_URL_EXPIRE_SECONDS=600
 ```
 
 ## Running with Docker

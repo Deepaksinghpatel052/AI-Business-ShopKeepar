@@ -68,9 +68,10 @@ def fake_s3(monkeypatch, tmp_path):
     def fake_delete_object(key):
         store.pop(key, None)
 
-    def fake_generate_presigned_download_url(key, expires_in=None):
-        ttl = expires_in or s3_storage_module.S3_PRESIGNED_URL_EXPIRE_SECONDS
-        return f"https://fake-s3.test/{key}?expires_in={ttl}"
+    def fake_download_bytes(key):
+        if key not in store:
+            raise RuntimeError(f"Failed to download object from S3: {key}")
+        return store[key]
 
     @contextlib.contextmanager
     def fake_s3_tempfile(key, suffix=".pdf"):
@@ -83,7 +84,7 @@ def fake_s3(monkeypatch, tmp_path):
 
     monkeypatch.setattr(s3_storage_module, "upload_bytes", fake_upload_bytes)
     monkeypatch.setattr(s3_storage_module, "delete_object", fake_delete_object)
-    monkeypatch.setattr(s3_storage_module, "generate_presigned_download_url", fake_generate_presigned_download_url)
+    monkeypatch.setattr(s3_storage_module, "download_bytes", fake_download_bytes)
     monkeypatch.setattr(s3_storage_module, "s3_tempfile", fake_s3_tempfile)
     return store
 
