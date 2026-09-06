@@ -1,4 +1,5 @@
 from fastapi import APIRouter, status, Depends, UploadFile, File, HTTPException
+from fastapi.responses import Response
 from utils.database import get_db
 from utils.auth import get_current_user
 from models.shop_owner import ShopOwner
@@ -134,15 +135,29 @@ async def get_my_files(
     }
 
 
-@router.get("/{document_id}/download-url")
-async def get_document_download_url(
+@router.get(
+    "/{document_id}/download",
+    response_class=Response,
+    responses={
+        200: {
+            "content": {"application/pdf": {}},
+            "description": "The raw file content, byte-for-byte identical to what was uploaded.",
+        }
+    },
+)
+async def download_document(
     document_id: int,
     db: db_dependency,
     current_user: ShopOwner = Depends(get_current_user),
 ):
     """
-    Ek specific document ke liye short-lived presigned S3 download URL do.
-    Bucket private hai — file access karne ka yahi ek tarika hai.
+    Document ki raw file content backend se serve karo. S3 URL client ko kabhi
+    expose nahi hoti — client sirf apne hi API domain se baat karta hai.
+
+    The explicit `responses` schema above tells FastAPI's OpenAPI spec that this
+    returns application/pdf, not the default application/json — without it,
+    Swagger UI's "Download file" button ignores the real Content-Type this
+    endpoint sends and saves the file as .txt.
     """
     doc = db.query(Document).filter(
         Document.id == document_id,
@@ -156,20 +171,19 @@ async def get_document_download_url(
         )
 
     try:
-        url = s3_storage.generate_presigned_download_url(doc.file_path)
+        file_bytes = s3_storage.download_bytes(doc.file_path)
     except RuntimeError:
-        logger.exception(f"Presign failed — document_id={document_id} user_id={current_user.id}")
+        logger.exception(f"Download failed — document_id={document_id} user_id={current_user.id}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to generate download URL"
+            detail="Failed to download document"
         )
 
-    return {
-        "document_id": doc.id,
-        "original_name": doc.original_name,
-        "download_url": url,
-        "expires_in": s3_storage.S3_PRESIGNED_URL_EXPIRE_SECONDS,
-    }
+    return Response(
+        content=file_bytes,
+        media_type=doc.mime_type,
+        headers={"Content-Disposition": f'attachment; filename="{doc.original_name}"'},
+    )
 
 
 @router.put("/edit/{document_id}", status_code=status.HTTP_200_OK)

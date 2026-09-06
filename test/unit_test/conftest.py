@@ -39,7 +39,7 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 def fake_s3(monkeypatch, tmp_path):
     """
     Replaces services.s3_storage's functions with an in-memory dict-backed
-    fake, so document upload/edit/download-url and the scheduler's S3-backed
+    fake, so document upload/edit/download and the scheduler's S3-backed
     processing never touch real AWS. Returns the backing dict (object key ->
     bytes) so tests can assert on what got "uploaded", or seed content for a
     key before exercising code that downloads it.
@@ -52,9 +52,10 @@ def fake_s3(monkeypatch, tmp_path):
     def fake_delete_object(key):
         store.pop(key, None)
 
-    def fake_generate_presigned_download_url(key, expires_in=None):
-        ttl = expires_in or s3_storage_module.S3_PRESIGNED_URL_EXPIRE_SECONDS
-        return f"https://fake-s3.test/{key}?expires_in={ttl}"
+    def fake_download_bytes(key):
+        if key not in store:
+            raise RuntimeError(f"Failed to download object from S3: {key}")
+        return store[key]
 
     @contextlib.contextmanager
     def fake_s3_tempfile(key, suffix=".pdf"):
@@ -67,7 +68,7 @@ def fake_s3(monkeypatch, tmp_path):
 
     monkeypatch.setattr(s3_storage_module, "upload_bytes", fake_upload_bytes)
     monkeypatch.setattr(s3_storage_module, "delete_object", fake_delete_object)
-    monkeypatch.setattr(s3_storage_module, "generate_presigned_download_url", fake_generate_presigned_download_url)
+    monkeypatch.setattr(s3_storage_module, "download_bytes", fake_download_bytes)
     monkeypatch.setattr(s3_storage_module, "s3_tempfile", fake_s3_tempfile)
     return store
 
