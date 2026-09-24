@@ -48,6 +48,9 @@ alembic upgrade head
 
 # 5. Server start karo
 uvicorn main:app --reload
+
+# 6. (Optional) Seed demo data - run in a separate terminal after the server is running
+python -c "from services.scheduler import process_demo_documents; process_demo_documents()"
 ```
 
 ## Environment Variables
