@@ -78,6 +78,29 @@ docker compose up --build
 
 The app will be available at http://localhost:8080.
 
+### Docker Cheatsheet (production / Linux host)
+
+```bash
+# Build and start the app in the background (detached mode)
+sudo docker compose up -d --build
+
+# If a build seems stale (cached layers not picking up changes), rebuild from scratch and start
+sudo docker compose build --no-cache && docker compose up -d
+
+# Copy local media files into the running container's media volume
+# (useful for seeding/restoring uploads that aren't tracked in git)
+sudo docker compose cp media/. app:/app/media/
+
+# List running (and stopped) containers to find the container ID/name
+sudo docker ps -a
+
+# Open an interactive shell inside a running container for debugging
+sudo docker exec -it {CONTAINER ID} /bin/bash
+
+# (Optional) Seed demo data - run after the container is up
+docker compose exec app python -c "from services.scheduler import process_demo_documents; process_demo_documents()"
+```
+
 Notes:
 - The database (`bizinsight.db`), `faiss_store/`, `media/`, and `logs/` live in
   Docker-managed named volumes (`app_data`, `app_faiss_store`, `app_media`,
