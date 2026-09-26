@@ -23,6 +23,9 @@ test/_test_logs/
 # Uploaded files
 # media/
 
+# FAISS vector indexes — generated at runtime from users' documents
+faiss_store/
+
 # IDE
 .vscode/
 .idea/
