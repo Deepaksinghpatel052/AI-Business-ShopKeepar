@@ -50,7 +50,7 @@ def process_pending_documents():
                 logger.info(f"[SCHEDULER] Processing: {d.original_name} (document_id={d.id} user_id={user_id})")
 
                 try:
-                    with s3_storage.s3_tempfile(d.file_path) as local_path:
+                    with s3_storage.s3_tempfile(d.file_path, suffix=f".{d.file_type}") as local_path:
                         user_documents = load_all_documents([local_path])
                 except RuntimeError:
                     logger.exception(f"[SCHEDULER] Could not download from S3, skipping: {d.original_name} (document_id={d.id})")
@@ -163,7 +163,7 @@ def verify_pending_documents():
             logger.info(f"[VERIFY] Verifying: {doc.original_name} (document_id={doc.id})")
 
             try:
-                with s3_storage.s3_tempfile(doc.file_path) as local_path:
+                with s3_storage.s3_tempfile(doc.file_path, suffix=f".{doc.file_type}") as local_path:
                     is_valid, reason = is_business_document(local_path)
             except RuntimeError:
                 logger.exception(f"[VERIFY] Could not download from S3, skipping: {doc.original_name} (document_id={doc.id})")

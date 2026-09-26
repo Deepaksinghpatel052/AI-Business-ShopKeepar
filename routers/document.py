@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 import logging
 from dotenv import load_dotenv
 from models.document import Document, ProcessStatus
+import os
 import uuid
 from datetime import datetime, timezone
 import services.s3_storage as s3_storage
@@ -21,9 +22,42 @@ db_dependency = Annotated[Session, Depends(get_db)]
 
 MAX_FILE_SIZE = 10 * 1024 * 1024  # 10 MB
 
-ALLOWED_MIME_TYPES = {
-    "application/pdf": "pdf"
+# extension -> browser/OS jo content types bhej sakte hain.
+# CSV ke liye bahut variety hai: Windows pe Excel installed ho to browser
+# "application/vnd.ms-excel" bhejta hai, curl/kuch clients "application/octet-stream".
+ALLOWED_FILE_TYPES = {
+    "pdf": {"application/pdf"},
+    "csv": {
+        "text/csv",
+        "application/csv",
+        "text/x-csv",
+        "application/vnd.ms-excel",
+        "text/plain",
+        "application/octet-stream",
+    },
 }
+
+# DB/S3 me hamesha yahi mime save hota hai, client ne jo bhi bheja ho
+CANONICAL_MIME_TYPES = {
+    "pdf": "application/pdf",
+    "csv": "text/csv",
+}
+
+
+def _resolve_file_type(file: UploadFile) -> str | None:
+    """
+    Upload ka file type (pdf/csv) nikalo — pehle filename extension + content type
+    dono match karein; warna sirf unambiguous content type (application/pdf, text/csv)
+    se decide karo. Allowed nahi hai to None.
+    """
+    ext = os.path.splitext(file.filename or "")[1].lower().lstrip(".")
+    if file.content_type in ALLOWED_FILE_TYPES.get(ext, ()):
+        return ext
+
+    for file_ext, mime in CANONICAL_MIME_TYPES.items():
+        if file.content_type == mime:
+            return file_ext
+    return None
 
 
 @router.post("/upload-file", status_code=status.HTTP_201_CREATED)
@@ -32,17 +66,19 @@ async def file_upload(
     current_user: ShopOwner = Depends(get_current_user),
     file: UploadFile = File(...)):
     """
-    File upload endpoint.
+    File upload endpoint (PDF ya CSV).
     Ye endpoint authenticated users ke liye hai.
     """
 
     # File type check
-    if file.content_type not in ALLOWED_MIME_TYPES:
-        logger.warning(f"Upload rejected — disallowed content type '{file.content_type}': user_id={current_user.id}")
+    file_ext = _resolve_file_type(file)
+    if file_ext is None:
+        logger.warning(f"Upload rejected — disallowed file '{file.filename}' ({file.content_type}): user_id={current_user.id}")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="File type not allowed. Allowed: pdf, doc, docx, csv, xls, xlsx, png, jpeg"
+            detail="File type not allowed. Allowed: pdf, csv"
         )
+    mime_type = CANONICAL_MIME_TYPES[file_ext]
 
     # File content pado
     file_bytes = await file.read()
@@ -56,7 +92,6 @@ async def file_upload(
         )
 
     # Unique naam generate karo
-    file_ext = ALLOWED_MIME_TYPES[file.content_type]
     stored_name = f"{uuid.uuid4().hex}.{file_ext}"
 
     # User ka alag S3 key prefix
@@ -67,7 +102,7 @@ async def file_upload(
 
     # S3 pe (private bucket) save karo
     try:
-        s3_storage.upload_bytes(object_key, file_bytes, file.content_type)
+        s3_storage.upload_bytes(object_key, file_bytes, mime_type)
     except RuntimeError:
         logger.exception(f"Upload failed — could not store file in S3: user_id={current_user.id}")
         raise HTTPException(
@@ -82,7 +117,7 @@ async def file_upload(
         stored_name=stored_name,
         file_path=object_key,
         file_type=file_ext,
-        mime_type=file.content_type,
+        mime_type=mime_type,
         file_size=len(file_bytes),
     )
     db.add(document)
@@ -140,7 +175,7 @@ async def get_my_files(
     response_class=Response,
     responses={
         200: {
-            "content": {"application/pdf": {}},
+            "content": {"application/pdf": {}, "text/csv": {}},
             "description": "The raw file content, byte-for-byte identical to what was uploaded.",
         }
     },
@@ -155,7 +190,7 @@ async def download_document(
     expose nahi hoti — client sirf apne hi API domain se baat karta hai.
 
     The explicit `responses` schema above tells FastAPI's OpenAPI spec that this
-    returns application/pdf, not the default application/json — without it,
+    returns a file (application/pdf or text/csv), not the default application/json — without it,
     Swagger UI's "Download file" button ignores the real Content-Type this
     endpoint sends and saves the file as .txt.
     """
@@ -211,12 +246,14 @@ async def edit_document(
         )
 
     # File type check
-    if file.content_type not in ALLOWED_MIME_TYPES:
-        logger.warning(f"Edit rejected — disallowed content type '{file.content_type}': document_id={document_id}")
+    file_ext = _resolve_file_type(file)
+    if file_ext is None:
+        logger.warning(f"Edit rejected — disallowed file '{file.filename}' ({file.content_type}): document_id={document_id}")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="File type not allowed"
+            detail="File type not allowed. Allowed: pdf, csv"
         )
+    mime_type = CANONICAL_MIME_TYPES[file_ext]
 
     file_bytes = await file.read()
 
@@ -236,7 +273,6 @@ async def edit_document(
         logger.warning(f"Old file delete failed, continuing with edit — document_id={document_id}")
 
     # Naya file save karo — fresh key, purani key kabhi reuse nahi karte
-    file_ext = ALLOWED_MIME_TYPES[file.content_type]
     stored_name = f"{uuid.uuid4().hex}.{file_ext}"
     now = datetime.now(timezone.utc)
     shop_name_clean = "".join(
@@ -247,7 +283,7 @@ async def edit_document(
     object_key = f"{current_user.id}/{shop_name_clean}/{now.year}/{str(now.month).zfill(2)}/{str(now.day).zfill(2)}/{stored_name}"
 
     try:
-        s3_storage.upload_bytes(object_key, file_bytes, file.content_type)
+        s3_storage.upload_bytes(object_key, file_bytes, mime_type)
     except RuntimeError:
         logger.exception(f"Edit failed — could not store file in S3: document_id={document_id}")
         raise HTTPException(
@@ -260,7 +296,7 @@ async def edit_document(
     doc.stored_name    = stored_name
     doc.file_path      = object_key
     doc.file_type      = file_ext
-    doc.mime_type      = file.content_type
+    doc.mime_type      = mime_type
     doc.file_size      = len(file_bytes)
     doc.process        = ProcessStatus.UPDATE   # ← UPDATE status
     doc.uploaded_at    = now

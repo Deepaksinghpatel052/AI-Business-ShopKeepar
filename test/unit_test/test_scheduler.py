@@ -313,3 +313,47 @@ def test_process_demo_documents_folder_without_pdfs_is_skipped(monkeypatch, tmp_
     scheduler_module.process_demo_documents()
 
     assert FakeFaissVectorStore.build_calls == []
+
+
+# ── CSV documents ───────────────────────────────────────────────────────────
+
+def test_process_pending_documents_embeds_csv_document(db_session, monkeypatch, fake_s3):
+    """A CSV document is downloaded with a .csv suffix, loaded via the CSV loader, and marked DONE."""
+    doc = make_document(
+        db_session, original_name="stock.csv", file_path="1/stock.csv",
+        file_type="csv", mime_type="text/csv", process=ProcessStatus.PROCESS,
+    )
+    fake_s3["1/stock.csv"] = b"Product,Qty\nRice,200\n"
+    embedded = []
+
+    class RecordingStore(FakeFaissVectorStore):
+        def build_from_documents(self, documents, user_id):
+            embedded.extend(d.page_content for d in documents)
+            return super().build_from_documents(documents, user_id)
+
+    monkeypatch.setattr(scheduler_module, "FaissVectorStore", RecordingStore)
+
+    scheduler_module.process_pending_documents()
+
+    db_session.refresh(doc)
+    assert doc.process == ProcessStatus.DONE
+    assert embedded == ["Product: Rice | Qty: 200"]
+
+
+def test_verify_pending_documents_passes_csv_temp_file_to_verifier(db_session, monkeypatch, fake_s3):
+    """The verifier receives a .csv temp path for CSV documents, so it picks the CSV reader."""
+    doc = make_document(db_session, file_path="1/stock.csv", file_type="csv", mime_type="text/csv")
+    fake_s3["1/stock.csv"] = b"Product,Qty\nRice,200\n"
+    seen_paths = []
+
+    def fake_is_business_document(file_path):
+        seen_paths.append(file_path)
+        return True, "Inventory sheet"
+
+    monkeypatch.setattr(scheduler_module, "is_business_document", fake_is_business_document)
+
+    scheduler_module.verify_pending_documents()
+
+    db_session.refresh(doc)
+    assert doc.process == ProcessStatus.PROCESS
+    assert seen_paths[0].endswith(".csv")

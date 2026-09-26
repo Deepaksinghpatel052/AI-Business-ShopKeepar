@@ -131,6 +131,5 @@ Notes:
 
 ## Supported File Types
 
-- PDF, DOC, DOCX
-- CSV, XLS, XLSX
-- PNG, JPEG
+- PDF
+- CSV (each row is indexed as `column: value` text, so answers can reference column names)

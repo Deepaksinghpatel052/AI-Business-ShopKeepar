@@ -6,6 +6,7 @@ from openai import OpenAI
 from dotenv import load_dotenv
 from utils.prompets import document_verification_prompt
 from RAG_src.vectorstore import FaissVectorStore
+from RAG_src.data_loader import read_csv_as_text
 load_dotenv()
 
 logger = logging.getLogger(__name__)
@@ -30,6 +31,9 @@ def is_business_document(file_path: str) -> tuple[bool, str]:
             reader = PdfReader(io.BytesIO(file_bytes))
             for page in reader.pages[:2]:
                 text += page.extract_text() or ""
+        elif ext == "csv":
+            # PDF ke 2 pages ki tarah — header + pehli 50 rows se pata chal jaata hai
+            text = read_csv_as_text(file_path, max_rows=50)
         else:
             text = file_bytes.decode("utf-8", errors="ignore")
         logger.debug(f"Extracted text from {file_path}: {text[:100]}...")

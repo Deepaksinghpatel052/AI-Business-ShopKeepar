@@ -89,6 +89,47 @@ def test_is_business_document_non_pdf_text_file(monkeypatch, tmp_path):
     assert reason == "Looks like a business note"
 
 
+def test_is_business_document_csv_sends_formatted_rows_to_llm(monkeypatch, tmp_path):
+    """CSV files are verified from their rows, formatted as 'column: value' lines."""
+    calls = []
+    mock_openai_verdict(monkeypatch, True, "Looks like an inventory sheet", calls=calls)
+    rows = "\n".join(f"Item{i},{i}" for i in range(100))
+    csv_path = tmp_path / "stock.csv"
+    csv_path.write_text(f"Product,Qty\n{rows}\n")
+
+    is_valid, reason = helper.is_business_document(str(csv_path))
+
+    assert is_valid is True
+    assert reason == "Looks like an inventory sheet"
+    prompt = calls[0]["messages"][0]["content"]
+    assert "Product: Item0 | Qty: 0\nProduct: Item1 | Qty: 1" in prompt
+
+
+def test_read_csv_as_text_max_rows_limits_rows_read(tmp_path):
+    """Verification only reads the first max_rows data rows, not the whole (up to 10 MB) file."""
+    rows = "\n".join(f"Item{i},{i}" for i in range(100))
+    csv_path = tmp_path / "stock.csv"
+    csv_path.write_text(f"Product,Qty\n{rows}\n")
+
+    lines = helper.read_csv_as_text(str(csv_path), max_rows=50).splitlines()
+
+    assert len(lines) == 50
+    assert lines[-1] == "Product: Item49 | Qty: 49"
+
+
+def test_is_business_document_header_only_csv_is_rejected_without_llm_call(monkeypatch, tmp_path):
+    """A CSV with no data rows has nothing to verify, so it's rejected without calling the LLM."""
+    calls = []
+    mock_openai_verdict(monkeypatch, True, "should not be called", calls=calls)
+    csv_path = tmp_path / "empty.csv"
+    csv_path.write_text("Product,Qty\n")
+
+    is_valid, reason = helper.is_business_document(str(csv_path))
+
+    assert is_valid is False
+    assert calls == []
+
+
 class FakeFaissVectorStore:
     last_instance = None
 
