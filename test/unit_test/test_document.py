@@ -189,3 +189,71 @@ def test_download_owned_by_another_user_returns_404(app_client, auth_headers, sa
 
     resp = app_client.get(f"/document/{document_id}/download", headers=headers_b)
     assert resp.status_code == 404
+
+
+# ── CSV uploads ─────────────────────────────────────────────────────────────
+
+SAMPLE_CSV = b"Product,Qty,Price\nRice,200,45\n"
+
+
+def test_upload_csv_file_success(app_client, auth_headers, fake_s3):
+    """A .csv upload is accepted, stored as file_type=csv, and saved to S3 under a .csv key."""
+    headers = auth_headers(email="csv1@example.com", password="Passw0rd")
+
+    resp = app_client.post(
+        "/document/upload-file", headers=headers,
+        files={"file": ("stock.csv", SAMPLE_CSV, "text/csv")},
+    )
+
+    assert resp.status_code == 201
+    assert resp.json()["file_type"] == "csv"
+    [key] = fake_s3.keys()
+    assert key.endswith(".csv")
+    assert fake_s3[key] == SAMPLE_CSV
+
+
+def test_upload_csv_with_windows_excel_content_type_is_normalised(app_client, auth_headers, fake_s3):
+    """Windows browsers send .csv as application/vnd.ms-excel — accepted, and served back as text/csv."""
+    headers = auth_headers(email="csv2@example.com", password="Passw0rd")
+
+    upload = app_client.post(
+        "/document/upload-file", headers=headers,
+        files={"file": ("stock.csv", SAMPLE_CSV, "application/vnd.ms-excel")},
+    )
+    assert upload.status_code == 201
+
+    download = app_client.get(f"/document/{upload.json()['id']}/download", headers=headers)
+    assert download.status_code == 200
+    assert download.headers["content-type"].startswith("text/csv")
+    assert download.content == SAMPLE_CSV
+
+
+def test_upload_rejects_excel_file_even_with_csv_like_content_type(app_client, auth_headers):
+    """application/vnd.ms-excel is only accepted for .csv names — a real .xlsx is still rejected."""
+    headers = auth_headers(email="csv3@example.com", password="Passw0rd")
+
+    resp = app_client.post(
+        "/document/upload-file", headers=headers,
+        files={"file": ("stock.xlsx", b"PK\x03\x04", "application/vnd.ms-excel")},
+    )
+    assert resp.status_code == 400
+
+
+def test_edit_document_pdf_to_csv_updates_file_type(app_client, auth_headers, sample_pdf_bytes, fake_s3):
+    """Replacing a PDF document with a CSV switches its file_type and marks it for reprocessing."""
+    headers = auth_headers(email="csv4@example.com", password="Passw0rd")
+    upload = app_client.post(
+        "/document/upload-file", headers=headers,
+        files={"file": ("report.pdf", sample_pdf_bytes, "application/pdf")},
+    )
+    document_id = upload.json()["id"]
+
+    resp = app_client.put(
+        f"/document/edit/{document_id}", headers=headers,
+        files={"file": ("report.csv", SAMPLE_CSV, "text/csv")},
+    )
+
+    assert resp.status_code == 200
+    assert resp.json()["process_status"] == "UPDATE"
+    files = app_client.get("/document/my-files", headers=headers).json()["files"]
+    assert files[0]["file_type"] == "csv"

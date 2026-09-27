@@ -4,7 +4,7 @@ This document lists every HTTP endpoint exposed by the backend (FastAPI), groupe
 
 ## About This App
 
-**AI-ShopKeepar** is an AI-powered business assistant for small shop owners (kirana stores, medical stores, etc.). A shop owner signs up, uploads their business documents (currently PDFs — invoices, bills, stock records, etc.), and the backend processes those documents into a searchable knowledge base (via embeddings + a FAISS vector store). The owner can then **ask plain-English questions about their own business data** (e.g. *"What were my total sales last month?"*, *"Which items are low in stock?"*) and get an AI-generated answer pulled from their uploaded documents — this is the core RAG (Retrieval-Augmented Generation) search feature.
+**AI-ShopKeepar** is an AI-powered business assistant for small shop owners (kirana stores, medical stores, etc.). A shop owner signs up, uploads their business documents (PDF or CSV — invoices, bills, stock records, sales sheets, etc.), and the backend processes those documents into a searchable knowledge base (via embeddings + a FAISS vector store). The owner can then **ask plain-English questions about their own business data** (e.g. *"What were my total sales last month?"*, *"Which items are low in stock?"*) and get an AI-generated answer pulled from their uploaded documents — this is the core RAG (Retrieval-Augmented Generation) search feature.
 
 Supporting features around that core flow:
 - **Auth** — signup/signin with JWT, password reset via emailed OTP, and password change.
@@ -271,18 +271,18 @@ Lets a logged-in user change their own password.
 
 ## Document (`/document`)
 
-These endpoints manage the source documents that feed the AI search — this is where a shop owner's business data (invoices, bills, records) enters the system before it can be asked about via `/rag/search`. All endpoints require **Bearer token** auth. Only PDF files are currently accepted (`application/pdf`), max size **10 MB**. Documents are stored in a **private S3 bucket** — there is no public URL for a file; use `GET /document/{document_id}/download` to fetch the file content (the backend proxies it, so no S3 URL is ever exposed to the client).
+These endpoints manage the source documents that feed the AI search — this is where a shop owner's business data (invoices, bills, records) enters the system before it can be asked about via `/rag/search`. All endpoints require **Bearer token** auth. Accepted file types are **PDF** (`application/pdf`) and **CSV** (`.csv` sent as `text/csv`, `application/csv`, `application/vnd.ms-excel`, `text/plain` or `application/octet-stream`; always stored and served back as `text/csv`), max size **10 MB**. Documents are stored in a **private S3 bucket** — there is no public URL for a file; use `GET /document/{document_id}/download` to fetch the file content (the backend proxies it, so no S3 URL is ever exposed to the client).
 
 ### `POST /document/upload-file`
 **Purpose:** Upload a new business document so it can be processed and later queried through AI search.
 **Auth:** Required
 
-Uploads a document (PDF) for the current user. The file is uploaded to a private S3 bucket under a per-user/shop/date key prefix and a `Document` record is created for later RAG processing.
+Uploads a document (PDF or CSV) for the current user. The file is uploaded to a private S3 bucket under a per-user/shop/date key prefix and a `Document` record is created for later RAG processing.
 
 **Request** — `multipart/form-data`
 | Field | Type | Description |
 |---|---|---|
-| `file` | file | The PDF file to upload |
+| `file` | file | The PDF or CSV file to upload |
 
 **Response `201 Created`**
 ```json
@@ -299,7 +299,7 @@ Uploads a document (PDF) for the current user. The file is uploaded to a private
 **Errors**
 | Status | Reason |
 |---|---|
-| `400 Bad Request` | Disallowed file type (only PDF supported) |
+| `400 Bad Request` | Disallowed file type (only PDF and CSV supported) |
 | `400 Bad Request` | File exceeds 10 MB |
 
 ---
@@ -343,7 +343,7 @@ Returns the file's actual bytes with `Content-Type` set to the document's stored
 |---|---|---|
 | `document_id` | int | ID of the document to download |
 
-**Response `200 OK`** — binary file content (e.g. `application/pdf`), not JSON.
+**Response `200 OK`** — binary file content (`application/pdf` or `text/csv`), not JSON.
 
 **Errors**
 | Status | Reason |
@@ -367,7 +367,7 @@ Replaces an existing document owned by the current user with a new file. The old
 **Request** — `multipart/form-data`
 | Field | Type | Description |
 |---|---|---|
-| `file` | file | The new PDF file |
+| `file` | file | The new PDF or CSV file |
 
 **Response `200 OK`**
 ```json
