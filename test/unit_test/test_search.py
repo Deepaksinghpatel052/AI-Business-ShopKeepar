@@ -49,7 +49,7 @@ class FakeFaissVectorStore:
 def rag_instance(monkeypatch, db_session_factory):
     FakeFaissVectorStore.instances = []
     monkeypatch.setattr(search_module, "FaissVectorStore", FakeFaissVectorStore)
-    monkeypatch.setattr(search_module, "ChatOpenAI", lambda **kwargs: FakeLLM())
+    monkeypatch.setattr(search_module, "get_chat_llm", lambda: FakeLLM())
     # handle_message/_confirm_entry/_reject_entry re-import SessionLocal locally on every
     # call (rather than using the module-level import), so the module-level patch alone
     # doesn't reach them — patch the real utils.database.SessionLocal too, since that's

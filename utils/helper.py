@@ -2,16 +2,14 @@ import os
 import io
 import json
 import logging
-from openai import OpenAI
 from dotenv import load_dotenv
 from utils.prompets import document_verification_prompt
 from RAG_src.vectorstore import FaissVectorStore
 from RAG_src.data_loader import read_csv_as_text
+from services.llm_manager import get_active_llm, get_chat_client
 load_dotenv()
 
 logger = logging.getLogger(__name__)
-
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 
 def is_business_document(file_path: str) -> tuple[bool, str]:
@@ -43,10 +41,10 @@ def is_business_document(file_path: str) -> tuple[bool, str]:
 
         prompt = document_verification_prompt(text)
  
-        response = client.chat.completions.create(
-            model=os.getenv("OPENAI_CHAT_MODEL", "gpt-4o-mini"),
+        response = get_chat_client().chat.completions.create(
+            model=get_active_llm().model,
             messages=[{"role": "user", "content": prompt}],
-            max_tokens=100,
+            max_tokens=200,         # ← local models zyada verbose hote hain, JSON truncate na ho
             temperature=0,          # ← consistent results ke liye
             response_format={"type": "json_object"},  # ← guaranteed JSON
         )

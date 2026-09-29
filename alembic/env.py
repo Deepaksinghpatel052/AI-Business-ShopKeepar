@@ -23,6 +23,7 @@ from models.document import Document
 from models.shop_owner import Base
 from models.chat_entry import ChatEntry
 from models.membership import MembershipPlan, Membership
+from models.llm_setting import LLMSetting
 target_metadata = Base.metadata
 
 

@@ -45,7 +45,8 @@ Authorization: Bearer <access_token>
 4. [RAG Search (`/rag`)](#rag-search-rag)
 5. [Demo Data (`/demo`)](#demo-data-demo)
 6. [Membership (`/membership`)](#membership-membership)
-7. [Common Error Format](#common-error-format)
+7. [LLM (`/llm`)](#llm-llm)
+8. [Common Error Format](#common-error-format)
 
 ---
 
@@ -685,6 +686,61 @@ Cancels the current user's active membership.
 
 ---
 
+## LLM (`/llm`)
+
+Manages which chat LLM the backend uses for RAG answers, intent detection, data extraction and document verification. The setting is **app-wide** (not per user) and is persisted, so it survives restarts. Default: local **Ollama `phi3:mini`**. Embeddings are not affected (always OpenAI).
+
+### `GET /llm/providers`
+**Purpose:** Populate an admin "AI model" settings screen: which providers exist, whether they're reachable, which models can be picked, and which one is active.
+**Auth:** Required
+
+**Response `200 OK`**
+```json
+{
+  "active": { "provider": "ollama", "model": "phi3:mini" },
+  "providers": [
+    { "provider": "ollama", "type": "local", "available": true,  "default_model": "phi3:mini",   "models": ["phi3:mini"] },
+    { "provider": "openai", "type": "cloud", "available": true,  "default_model": "gpt-4o-mini", "models": ["gpt-4o-mini"] }
+  ]
+}
+```
+`available` is `false` for Ollama when the Ollama server is not reachable, and for OpenAI when `OPENAI_API_KEY` is not set on the server.
+
+---
+
+### `GET /llm/active`
+**Purpose:** Show which LLM is currently answering.
+**Auth:** Required
+
+**Response `200 OK`**
+```json
+{ "provider": "ollama", "model": "phi3:mini" }
+```
+
+---
+
+### `PUT /llm/active`
+**Purpose:** Switch the LLM used by the whole app. Takes effect immediately on the next request.
+**Auth:** Admin only
+
+**Request body** (`model` is optional; if omitted the provider's default model is used)
+```json
+{ "provider": "openai", "model": "gpt-4o-mini" }
+```
+
+**Response `200 OK`**
+```json
+{ "provider": "openai", "model": "gpt-4o-mini" }
+```
+
+**Errors**
+| Status | Reason |
+|---|---|
+| `400 Bad Request` | Unknown provider, Ollama not reachable, Ollama model not pulled, or `OPENAI_API_KEY` missing |
+| `403 Forbidden` | Caller is not an admin |
+
+---
+
 ## Common Error Format
 
 Validation errors (`422`) follow FastAPI/Pydantic's default shape:
@@ -721,5 +777,7 @@ Any unhandled server exception returns a generic `500`:
 **`status`** (Membership): `active` · `expired` · `cancelled`
 
 **`user_type`** (ShopOwner): `admin` · `member`
+
+**`provider`** (LLM): `ollama` (local, default) · `openai`
 
 **`plan`** (ShopOwner, legacy top-level field also returned on signin/signup): `free` · `premium`
