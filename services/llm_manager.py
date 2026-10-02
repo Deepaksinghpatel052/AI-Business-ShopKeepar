@@ -1,5 +1,5 @@
 """
-Chat LLM ka ek central manager — local Ollama (default) aur OpenAI ke beech switch karne ke liye.
+Chat LLM ka ek central manager — local Ollama qwen3:14b (default) aur OpenAI ke beech switch karne ke liye.
 
 Ollama ka OpenAI-compatible API (`<OLLAMA_BASE_URL>/v1`) use hota hai, isliye dono providers
 ke liye wahi ChatOpenAI / OpenAI client chalta hai — sirf base_url, api_key aur model badalte hain.
@@ -30,8 +30,11 @@ PROVIDER_OLLAMA = "ollama"
 PROVIDER_OPENAI = "openai"
 SUPPORTED_PROVIDERS = (PROVIDER_OLLAMA, PROVIDER_OPENAI)
 
-OLLAMA_BASE_URL   = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434").rstrip("/")
-OLLAMA_CHAT_MODEL = os.getenv("OLLAMA_CHAT_MODEL", "phi3:mini")
+OLLAMA_BASE_URL   = os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434").rstrip("/")
+OLLAMA_CHAT_MODEL = os.getenv("OLLAMA_CHAT_MODEL", "qwen3:14b")
+# qwen3 jaise thinking models ka reasoning mode — Ollama native API ke `"think": false` jaisa.
+# /v1 (OpenAI-compatible) endpoint `think` ignore karta hai, wahan `reasoning_effort` hi kaam karta hai.
+OLLAMA_THINK      = os.getenv("OLLAMA_THINK", "false").strip().lower() in ("1", "true", "yes")
 OPENAI_CHAT_MODEL = os.getenv("OPENAI_CHAT_MODEL", "gpt-4o-mini")
 LLM_TIMEOUT       = float(os.getenv("LLM_TIMEOUT_SECONDS", "120"))  # local CPU model slow ho sakta hai
 
@@ -135,6 +138,18 @@ def set_active_llm(provider: str, model: str | None, user_id: int | None = None)
     return new_active
 
 
+def chat_request_kwargs(provider: str | None = None) -> dict:
+    """
+    Har chat request ke saath jaane wale extra params. Ollama + OLLAMA_THINK=false pe
+    reasoning_effort="none" bhejte hain (= `"think": false`) — Ollama ise non-thinking
+    models (phi3) pe bhi accept karta hai, isliye model ke hisaab se check nahi karna padta.
+    """
+    provider = provider or get_active_llm().provider
+    if provider == PROVIDER_OLLAMA and not OLLAMA_THINK:
+        return {"reasoning_effort": "none"}
+    return {}
+
+
 # ── Clients ───────────────────────────────────────────────────────────────────
 
 def get_chat_llm() -> ChatOpenAI:
@@ -142,7 +157,12 @@ def get_chat_llm() -> ChatOpenAI:
     active = get_active_llm()
     llm = _chat_cache.get(active)
     if llm is None:
-        llm = ChatOpenAI(model=active.model, timeout=LLM_TIMEOUT, **_connection_kwargs(active.provider))
+        llm = ChatOpenAI(
+            model=active.model,
+            timeout=LLM_TIMEOUT,
+            **_connection_kwargs(active.provider),
+            **chat_request_kwargs(active.provider),
+        )
         _chat_cache[active] = llm
     return llm
 

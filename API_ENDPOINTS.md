@@ -688,7 +688,7 @@ Cancels the current user's active membership.
 
 ## LLM (`/llm`)
 
-Manages which chat LLM the backend uses for RAG answers, intent detection, data extraction and document verification. The setting is **app-wide** (not per user) and is persisted, so it survives restarts. Default: local **Ollama `phi3:mini`**. Embeddings are not affected (always OpenAI).
+Manages which chat LLM the backend uses for RAG answers, intent detection, data extraction and document verification. The setting is **app-wide** (not per user) and is persisted, so it survives restarts. Default: local **Ollama `qwen3:14b`** with thinking mode off. Embeddings are not affected (always OpenAI).
 
 ### `GET /llm/providers`
 **Purpose:** Populate an admin "AI model" settings screen: which providers exist, whether they're reachable, which models can be picked, and which one is active.
@@ -697,9 +697,9 @@ Manages which chat LLM the backend uses for RAG answers, intent detection, data 
 **Response `200 OK`**
 ```json
 {
-  "active": { "provider": "ollama", "model": "phi3:mini" },
+  "active": { "provider": "ollama", "model": "qwen3:14b" },
   "providers": [
-    { "provider": "ollama", "type": "local", "available": true,  "default_model": "phi3:mini",   "models": ["phi3:mini"] },
+    { "provider": "ollama", "type": "local", "available": true,  "default_model": "qwen3:14b",   "models": ["qwen3:14b", "phi3:mini"] },
     { "provider": "openai", "type": "cloud", "available": true,  "default_model": "gpt-4o-mini", "models": ["gpt-4o-mini"] }
   ]
 }
@@ -714,7 +714,7 @@ Manages which chat LLM the backend uses for RAG answers, intent detection, data 
 
 **Response `200 OK`**
 ```json
-{ "provider": "ollama", "model": "phi3:mini" }
+{ "provider": "ollama", "model": "qwen3:14b" }
 ```
 
 ---

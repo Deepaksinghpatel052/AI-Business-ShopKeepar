@@ -11,7 +11,7 @@ from models.shop_owner import UserType
 def llm_db(monkeypatch, db_session_factory):
     """Point llm_manager's SessionLocal at the in-memory test DB and fake the Ollama model list."""
     monkeypatch.setattr(database_module, "SessionLocal", db_session_factory)
-    monkeypatch.setattr(llm_manager, "list_ollama_models", lambda: ["phi3:mini", "llama3:8b"])
+    monkeypatch.setattr(llm_manager, "list_ollama_models", lambda: [llm_manager.OLLAMA_CHAT_MODEL, "phi3:mini"])
     monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
     return db_session_factory
 
@@ -19,7 +19,7 @@ def llm_db(monkeypatch, db_session_factory):
 # ── llm_manager ────────────────────────────────────────────────────────────────
 
 def test_default_llm_is_local_ollama(monkeypatch, llm_db):
-    """With no saved setting, the active LLM falls back to local Ollama phi3:mini."""
+    """With no saved setting, the active LLM falls back to local Ollama (OLLAMA_CHAT_MODEL, qwen3:14b by default)."""
     monkeypatch.setattr(llm_manager, "_active", None)
 
     active = llm_manager.get_active_llm()
@@ -73,10 +73,22 @@ def test_set_openai_requires_api_key(monkeypatch, llm_db):
         llm_manager.set_active_llm("openai", None)
 
 
-def test_get_chat_llm_points_ollama_at_local_openai_compatible_api():
+def test_get_chat_llm_points_ollama_at_local_openai_compatible_api(monkeypatch):
+    monkeypatch.setattr(llm_manager, "_chat_cache", {})
+    monkeypatch.setattr(llm_manager, "OLLAMA_THINK", False)
     llm = llm_manager.get_chat_llm()
     assert llm.model_name == llm_manager.OLLAMA_CHAT_MODEL
     assert llm.openai_api_base == f"{llm_manager.OLLAMA_BASE_URL}/v1"
+    assert llm.reasoning_effort == "none"  # = Ollama "think": false
+
+
+def test_chat_request_kwargs_turns_thinking_off_only_for_ollama(monkeypatch):
+    monkeypatch.setattr(llm_manager, "OLLAMA_THINK", False)
+    assert llm_manager.chat_request_kwargs("ollama") == {"reasoning_effort": "none"}
+    assert llm_manager.chat_request_kwargs("openai") == {}
+
+    monkeypatch.setattr(llm_manager, "OLLAMA_THINK", True)
+    assert llm_manager.chat_request_kwargs("ollama") == {}
 
 
 # ── JSON parsing of small-model replies ──────────────────────────────────────

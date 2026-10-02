@@ -66,17 +66,18 @@ AWS_REGION=ap-south-1
 S3_BUCKET_NAME=your-private-s3-bucket
 OPENAI_API_KEY=your-openai-key          # embeddings + optional OpenAI chat LLM
 DEFAULT_LLM_PROVIDER=ollama             # ollama (local, default) | openai
-OLLAMA_BASE_URL=http://localhost:11434
-OLLAMA_CHAT_MODEL=phi3:mini
+OLLAMA_BASE_URL=http://127.0.0.1:11434
+OLLAMA_CHAT_MODEL=qwen3:14b
+OLLAMA_THINK=false                      # = "think": false for qwen3
 ```
 
 ## LLM (local Ollama by default)
 
 The chat LLM (intent detection, data extraction, answers, document verification) runs on
-**local Ollama `phi3:mini`** by default. OpenAI can be switched on at runtime — no restart needed.
+**local Ollama `qwen3:14b`** (thinking off) by default. OpenAI can be switched on at runtime — no restart needed.
 
 ```bash
-ollama pull phi3:mini      # one time
+ollama pull qwen3:14b      # one time (~9.3 GB, needs ~10+ GB RAM)
 ollama serve               # usually already running as a background service
 ```
 
@@ -86,6 +87,8 @@ ollama serve               # usually already running as a background service
 
 The choice is saved in the `llm_settings` table, so it survives restarts. Embeddings still use
 OpenAI (`OPENAI_API_KEY`), because switching the embedding model would require re-indexing FAISS.
+`OLLAMA_THINK=false` is the equivalent of `"think": false` in Ollama's native `/api/chat`. The app talks to
+Ollama's OpenAI-compatible `/v1` endpoint, which ignores `think`, so it sends `reasoning_effort: "none"` instead.
 In Docker, the app reaches the host's Ollama at `host.docker.internal:11434` (already set in the compose files).
 
 ## Running with Docker

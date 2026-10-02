@@ -34,7 +34,7 @@ class ProvidersResponse(BaseModel):
 
 class SetActiveLLMRequest(BaseModel):
     provider: str = Field(min_length=2, max_length=50, examples=["ollama"])
-    model: str | None = Field(default=None, max_length=100, examples=["phi3:mini"])
+    model: str | None = Field(default=None, max_length=100, examples=["qwen3:14b"])
 
 
 # ── Endpoints ──────────────────────────────────────────────────────────────────
@@ -64,7 +64,7 @@ async def set_active(
     """
     Active LLM badlo (admin only — ye setting poore app ke liye hai).
     - provider: "ollama" (local, default) ya "openai"
-    - model: optional — na do to provider ka default model (e.g. phi3:mini / gpt-4o-mini)
+    - model: optional — na do to provider ka default model (e.g. qwen3:14b / gpt-4o-mini)
     """
     if current_user.user_type != UserType.ADMIN:
         logger.warning(f"Non-admin tried to change LLM — user_id={current_user.id}")
