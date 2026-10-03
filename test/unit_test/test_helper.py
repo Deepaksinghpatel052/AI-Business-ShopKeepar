@@ -26,7 +26,7 @@ def mock_openai_verdict(monkeypatch, is_business, reason, calls=None):
             calls.append(kwargs)
         return FakeChatResponse(json.dumps({"is_business": is_business, "reason": reason}))
 
-    monkeypatch.setattr(helper.client.chat.completions, "create", fake_create)
+    monkeypatch.setattr(helper.get_chat_client().chat.completions, "create", fake_create)
 
 
 def test_is_business_document_true_case(monkeypatch, make_pdf):
@@ -56,7 +56,7 @@ def test_is_business_document_handles_llm_exception(monkeypatch, make_pdf):
     def fake_create(**kwargs):
         raise RuntimeError("network down")
 
-    monkeypatch.setattr(helper.client.chat.completions, "create", fake_create)
+    monkeypatch.setattr(helper.get_chat_client().chat.completions, "create", fake_create)
     pdf_path = make_pdf(text="Some content that extracts fine.")
 
     is_valid, reason = helper.is_business_document(pdf_path)

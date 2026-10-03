@@ -5,7 +5,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import logging
 from dotenv import load_dotenv
 from RAG_src.vectorstore import FaissVectorStore
-from langchain_openai import ChatOpenAI
+from services.llm_manager import get_chat_llm
 from utils.prompets import search_and_summarize_prompt, handle_message_intent_prompt
 from utils.prompets import extract_and_confirm_confirmation_propmt, extract_and_confirm_extract_prompt
 import json
@@ -21,12 +21,24 @@ load_dotenv()
 logger = logging.getLogger(__name__)
 
 
+def _parse_llm_json(content: str) -> dict:
+    """
+    LLM reply se JSON object nikalo. Chhote local models (phi3) aksar ```json fences ya
+    aage-peeche extra text laga dete hain, isliye pehle { se aakhri } tak ka hissa parse karo.
+    """
+    raw = content.strip()
+    raw = raw.removeprefix("```json").removeprefix("```").removesuffix("```").strip()
+    start, end = raw.find("{"), raw.rfind("}")
+    if start != -1 and end > start:
+        raw = raw[start:end + 1]
+    return json.loads(raw)
+
+
 class RAGSearch:
     def __init__(
         self,
         persist_dir: str = "faiss_store",
         embedding_model: str = "openai",
-        llm_model: str = os.getenv("OPENAI_CHAT_MODEL", "gpt-4o-mini")
     ):
         self.vectorstore = FaissVectorStore(persist_dir, embedding_model)
 
@@ -39,12 +51,18 @@ class RAGSearch:
         else:
             logger.warning("No existing vector store found at persist_dir root. Build it first using vectorstore.py")
 
-        # OpenAI LLM
-        self.llm = ChatOpenAI(
-            model=llm_model,
-            api_key=os.getenv("OPENAI_API_KEY")
-        )
-        logger.info(f"OpenAI LLM initialized: {llm_model}")
+        # Chat LLM har call pe services.llm_manager se aata hai (default local Ollama),
+        # taaki /llm endpoint se model badle to bina restart ke apply ho jaaye.
+        self._llm_override = None
+
+    @property
+    def llm(self):
+        return self._llm_override or get_chat_llm()
+
+    @llm.setter
+    def llm(self, value):
+        # Tests / scripts ek fixed LLM inject kar sakte hain
+        self._llm_override = value
 
     def handle_message(self, message: str, user_id: int) -> str:
         import json
@@ -76,7 +94,7 @@ class RAGSearch:
         intent_response = self.llm.invoke([intent_prompt])
 
         try:
-            result = json.loads(intent_response.content)
+            result = _parse_llm_json(intent_response.content)
             intent = result["intent"]
         except Exception:
             logger.warning(f"Could not parse intent classification response — user_id={user_id} raw={intent_response.content!r}")
@@ -139,9 +157,7 @@ class RAGSearch:
         logger.debug(f"Extraction LLM raw response — user_id={user_id}: {extract_response.content}")
 
         try:
-            raw = extract_response.content.strip()
-            raw = raw.removeprefix("```json").removeprefix("```").removesuffix("```").strip()
-            extracted = json.loads(raw)
+            extracted = _parse_llm_json(extract_response.content)
         except Exception:
             logger.warning(f"Could not parse extracted data JSON — user_id={user_id}")
             return "Could not understand the data. Please try again with more details."

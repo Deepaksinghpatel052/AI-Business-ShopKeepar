@@ -29,6 +29,7 @@ from models.document import Document, ProcessStatus  # noqa: F401 (registers tab
 from models.chat_entry import ChatEntry, ChatStatus  # noqa: F401 (registers table with Base)
 from utils.database import get_db
 import services.s3_storage as s3_storage_module
+import services.llm_manager as llm_manager
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
@@ -71,6 +72,20 @@ def fake_s3(monkeypatch, tmp_path):
     monkeypatch.setattr(s3_storage_module, "download_bytes", fake_download_bytes)
     monkeypatch.setattr(s3_storage_module, "s3_tempfile", fake_s3_tempfile)
     return store
+
+
+# ── Active LLM (never read the real DB for the LLM setting) ─────────────────
+
+@pytest.fixture(autouse=True)
+def pinned_llm(monkeypatch):
+    """
+    Pins services.llm_manager's cached active LLM to the default (local Ollama),
+    so get_active_llm() never opens the real bizinsight.db to load the setting and
+    a set_active_llm() in one test can't leak into the next.
+    """
+    active = llm_manager.ActiveLLM(llm_manager.PROVIDER_OLLAMA, llm_manager.OLLAMA_CHAT_MODEL)
+    monkeypatch.setattr(llm_manager, "_active", active)
+    return active
 
 
 # ── Database ──────────────────────────────────────────────────────────────────
